@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(MEMBER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  posts        Post[]
+  videos       Video[]
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String    @unique
+  excerpt     String
+  content     String
+  coverImage  String?
+  published   Boolean   @default(false)
+  featured    Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+}
+
+model Video {
+  id           String        @id @default(cuid())
+  title        String
+  slug         String        @unique
+  excerpt      String
+  description  String
+  platform     VideoPlatform
+  videoUrl     String
+  thumbnailUrl String?
+  duration     String?
+  featured     Boolean       @default(false)
+  published    Boolean       @default(false)
+  publishedAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  authorId     String
+  author       User          @relation(fields: [authorId], references: [id])
+}
+
+model SiteSettings {
+  id                  String   @id @default("main")
+  siteName            String
+  siteTagline         String
+  heroBadge           String
+  heroTitle           String
+  heroSubtitle        String
+  primaryButtonLabel  String
+  primaryButtonHref   String
+  secondaryButtonLabel String
+  secondaryButtonHref String
+  primaryColor        String
+  accentColor         String
+  darkColor           String
+  heroImage           String
+  teamImage           String
+  statsJson           String
+  updatedAt           DateTime @updatedAt
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum VideoPlatform {
+  BILIBILI
+  YOUTUBE
+  DOUYIN
+  OTHER
+}
