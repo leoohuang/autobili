@@ -8,6 +8,12 @@ export default function Page() {
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState("");
+  const [debugLoading, setDebugLoading] = useState(false);
+
+  function extractBvid(input: string) {
+    return input.match(/BV[0-9A-Za-z]+/i)?.[0] ?? input.trim();
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,6 +58,27 @@ export default function Page() {
     }
   }
 
+  async function handleDebugSubtitle() {
+    setDebugLoading(true);
+    setDebugInfo("");
+
+    try {
+      const bvid = extractBvid(url);
+      const response = await fetch(
+        `/api/debug/subtitle?bvid=${encodeURIComponent(bvid)}`,
+      );
+      const data = (await response.json()) as Record<string, unknown>;
+      setDebugInfo(JSON.stringify(data, null, 2));
+    } catch (debugError) {
+      console.error(debugError);
+      setDebugInfo(
+        JSON.stringify({ error: "DEBUG_REQUEST_FAILED" }, null, 2),
+      );
+    } finally {
+      setDebugLoading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-16 text-slate-900">
       <div className="mx-auto flex max-w-[720px] flex-col gap-6">
@@ -80,13 +107,23 @@ export default function Page() {
             value={topic}
             onChange={(event) => setTopic(event.target.value)}
           />
-          <button
-            className="rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-            disabled={loading}
-            type="submit"
-          >
-            {loading ? "生成中..." : "生成"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              disabled={loading}
+              type="submit"
+            >
+              {loading ? "生成中..." : "生成"}
+            </button>
+            <button
+              className="rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+              disabled={debugLoading || !url.trim()}
+              onClick={handleDebugSubtitle}
+              type="button"
+            >
+              {debugLoading ? "检查中..." : "检查字幕"}
+            </button>
+          </div>
         </form>
 
         <section className="min-h-[320px] rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
@@ -99,6 +136,13 @@ export default function Page() {
               {result || "生成结果会显示在这里。"}
             </p>
           )}
+        </section>
+
+        <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">字幕调试</h2>
+          <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-slate-700">
+            {debugInfo || "点击“检查字幕”后，这里会显示 B 站字幕接口的调试信息。"}
+          </pre>
         </section>
       </div>
     </main>
