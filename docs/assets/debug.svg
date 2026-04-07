@@ -1,0 +1,17 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="640" fill="#F8FAFC"/>
+  <rect x="72" y="72" width="1136" height="496" rx="28" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="112" y="116" width="1056" height="66" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="1000" y="121" width="136" height="56" rx="16" fill="#0F172A"/>
+  <text x="144" y="157" fill="#64748B" font-family="Arial, sans-serif" font-size="22">https://www.bilibili.com/video/BV...</text>
+  <text x="1033" y="156" fill="white" font-family="Arial, sans-serif" font-size="20" font-weight="700">检查字幕</text>
+  <rect x="112" y="220" width="1056" height="70" rx="18" fill="#EFF6FF"/>
+  <text x="144" y="262" fill="#1D4ED8" font-family="Arial, sans-serif" font-size="24" font-weight="700">共 9 页，命中 0 页字幕，状态：NO_SUBTITLE</text>
+  <rect x="112" y="322" width="1056" height="196" rx="18" fill="#0F172A"/>
+  <text x="144" y="366" fill="#93C5FD" font-family="Courier New, monospace" font-size="22">{</text>
+  <text x="176" y="400" fill="#E2E8F0" font-family="Courier New, monospace" font-size="20">"resolved_bvid": "BV1PK4y1S7kb",</text>
+  <text x="176" y="432" fill="#E2E8F0" font-family="Courier New, monospace" font-size="20">"selected_page": null,</text>
+  <text x="176" y="464" fill="#E2E8F0" font-family="Courier New, monospace" font-size="20">"page_attempts": [...],</text>
+  <text x="176" y="496" fill="#E2E8F0" font-family="Courier New, monospace" font-size="20">"error": "NO_SUBTITLE"</text>
+  <text x="144" y="528" fill="#93C5FD" font-family="Courier New, monospace" font-size="22">}</text>
+</svg>

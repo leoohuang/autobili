@@ -1,0 +1,27 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="360" rx="24" fill="#F8FAFC"/>
+  <rect x="40" y="92" width="200" height="176" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="290" y="92" width="200" height="176" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="540" y="92" width="200" height="176" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="790" y="92" width="200" height="176" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <rect x="1040" y="92" width="200" height="176" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+  <path d="M240 180H290" stroke="#94A3B8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M490 180H540" stroke="#94A3B8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M740 180H790" stroke="#94A3B8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M990 180H1040" stroke="#94A3B8" stroke-width="4" stroke-linecap="round"/>
+  <text x="74" y="138" fill="#0F172A" font-family="Arial, sans-serif" font-size="26" font-weight="700">1. 输入</text>
+  <text x="74" y="180" fill="#475569" font-family="Arial, sans-serif" font-size="20">B 站链接</text>
+  <text x="74" y="210" fill="#475569" font-family="Arial, sans-serif" font-size="20">+ 新话题</text>
+  <text x="321" y="138" fill="#0F172A" font-family="Arial, sans-serif" font-size="26" font-weight="700">2. 抓字幕</text>
+  <text x="321" y="180" fill="#475569" font-family="Arial, sans-serif" font-size="20">解析 BV / 多分页</text>
+  <text x="321" y="210" fill="#475569" font-family="Arial, sans-serif" font-size="20">获取官方字幕</text>
+  <text x="565" y="138" fill="#0F172A" font-family="Arial, sans-serif" font-size="26" font-weight="700">3. 解结构</text>
+  <text x="565" y="180" fill="#475569" font-family="Arial, sans-serif" font-size="20">Prompt A</text>
+  <text x="565" y="210" fill="#475569" font-family="Arial, sans-serif" font-size="20">JSON 分析输出</text>
+  <text x="818" y="138" fill="#0F172A" font-family="Arial, sans-serif" font-size="26" font-weight="700">4. 生成</text>
+  <text x="818" y="180" fill="#475569" font-family="Arial, sans-serif" font-size="20">Prompt B</text>
+  <text x="818" y="210" fill="#475569" font-family="Arial, sans-serif" font-size="20">流式返回脚本</text>
+  <text x="1068" y="138" fill="#0F172A" font-family="Arial, sans-serif" font-size="26" font-weight="700">5. 展示</text>
+  <text x="1068" y="180" fill="#475569" font-family="Arial, sans-serif" font-size="20">前端逐段渲染</text>
+  <text x="1068" y="210" fill="#475569" font-family="Arial, sans-serif" font-size="20">并行支持调试</text>
+</svg>

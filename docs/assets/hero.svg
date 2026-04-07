@@ -1,0 +1,33 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#F8FAFC"/>
+  <rect x="48" y="48" width="1184" height="624" rx="28" fill="url(#bg)"/>
+  <rect x="92" y="112" width="520" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.92"/>
+  <rect x="92" y="196" width="520" height="64" rx="18" fill="#FFFFFF" fill-opacity="0.92"/>
+  <rect x="92" y="292" width="180" height="56" rx="16" fill="#0F172A"/>
+  <rect x="292" y="292" width="180" height="56" rx="16" fill="#FFFFFF" fill-opacity="0.84"/>
+  <rect x="668" y="112" width="520" height="472" rx="24" fill="#FFFFFF" fill-opacity="0.95"/>
+  <rect x="700" y="156" width="210" height="16" rx="8" fill="#CBD5E1"/>
+  <rect x="700" y="200" width="448" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="228" width="412" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="256" width="428" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="306" width="392" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="334" width="438" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="362" width="360" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="412" width="240" height="14" rx="7" fill="#94A3B8"/>
+  <rect x="700" y="450" width="388" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="478" width="430" height="12" rx="6" fill="#E2E8F0"/>
+  <rect x="700" y="506" width="344" height="12" rx="6" fill="#E2E8F0"/>
+  <text x="92" y="92" fill="#E2E8F0" font-family="Arial, sans-serif" font-size="20" font-weight="700">Autobili</text>
+  <text x="92" y="410" fill="white" font-family="Arial, sans-serif" font-size="54" font-weight="700">把 B 站视频结构</text>
+  <text x="92" y="476" fill="white" font-family="Arial, sans-serif" font-size="54" font-weight="700">迁移到你的新话题</text>
+  <text x="92" y="536" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="24">字幕抓取 → 结构解构 → 流式生成更强口播稿</text>
+  <text x="128" y="330" fill="white" font-family="Arial, sans-serif" font-size="22" font-weight="700">生成脚本</text>
+  <text x="320" y="330" fill="#0F172A" font-family="Arial, sans-serif" font-size="22" font-weight="700">检查字幕</text>
+  <defs>
+    <linearGradient id="bg" x1="48" y1="48" x2="1232" y2="672" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.55" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+  </defs>
+</svg>
