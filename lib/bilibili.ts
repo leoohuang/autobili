@@ -7,6 +7,12 @@ export type VideoInfo = {
   title: string;
 };
 
+export type VideoPage = {
+  cid: number;
+  page: number;
+  part: string;
+};
+
 export type BilibiliSubtitleItem = {
   id?: number;
   id_str?: string;
@@ -34,6 +40,11 @@ type ViewResponse = {
   data?: {
     cid?: number;
     title?: string;
+    pages?: Array<{
+      cid?: number;
+      page?: number;
+      part?: string;
+    }>;
   };
 };
 
@@ -132,10 +143,7 @@ export async function resolveBvidDetails(
 }
 
 export async function fetchVideoInfo(bvid: string): Promise<VideoInfo> {
-  const viewUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(
-    bvid,
-  )}`;
-  const viewData = await fetchJson<ViewResponse>(viewUrl);
+  const viewData = await fetchViewData(bvid);
   const cid = viewData.data?.cid;
   const title = viewData.data?.title?.trim();
 
@@ -144,6 +152,26 @@ export async function fetchVideoInfo(bvid: string): Promise<VideoInfo> {
   }
 
   return { cid, title };
+}
+
+async function fetchViewData(bvid: string): Promise<ViewResponse> {
+  const viewUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(
+    bvid,
+  )}`;
+  return fetchJson<ViewResponse>(viewUrl);
+}
+
+export async function fetchVideoPages(bvid: string): Promise<VideoPage[]> {
+  const viewData = await fetchViewData(bvid);
+  const pages = viewData.data?.pages ?? [];
+
+  return pages
+    .map((item) => ({
+      cid: item.cid ?? 0,
+      page: item.page ?? 0,
+      part: item.part?.trim() ?? "",
+    }))
+    .filter((item) => item.cid > 0);
 }
 
 export async function fetchSubtitleList(
@@ -176,13 +204,18 @@ export async function fetchSubtitleContent(url: string): Promise<string> {
 }
 
 export async function fetchSubtitle(bvid: string): Promise<string> {
-  const { cid } = await fetchVideoInfo(bvid);
-  const subtitleList = await fetchSubtitleList(bvid, cid);
-  const subtitleUrl = subtitleList[0]?.subtitle_url;
+  const pages = await fetchVideoPages(bvid);
 
-  if (!subtitleUrl) {
-    throw new Error("NO_SUBTITLE");
+  for (const page of pages) {
+    const subtitleList = await fetchSubtitleList(bvid, page.cid);
+    const subtitleUrl = subtitleList[0]?.subtitle_url;
+
+    if (!subtitleUrl) {
+      continue;
+    }
+
+    return fetchSubtitleContent(subtitleUrl);
   }
 
-  return fetchSubtitleContent(subtitleUrl);
+  throw new Error("NO_SUBTITLE");
 }

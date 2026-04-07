@@ -2,6 +2,7 @@ import {
   fetchSubtitleContent,
   fetchSubtitleList,
   fetchVideoInfo,
+  fetchVideoPages,
   resolveBvidDetails,
 } from "@/lib/bilibili";
 
@@ -41,28 +42,78 @@ export async function GET(request: Request) {
   let transcriptPreview = "";
   let transcriptLength = 0;
   let error: string | null = null;
+  let selectedPage: number | null = null;
+  let selectedPart: string | null = null;
+  let pageAttempts: Array<{
+    page: number;
+    part: string;
+    cid: number;
+    subtitle_count: number;
+    first_subtitle_url: string | null;
+    transcript_length: number;
+    error: string | null;
+  }> = [];
 
   try {
     const videoInfo = await fetchVideoInfo(bvid);
     title = videoInfo.title;
-    cid = videoInfo.cid;
+    const pages = await fetchVideoPages(bvid);
 
-    subtitleList = await fetchSubtitleList(bvid, cid);
-    firstSubtitleUrl =
-      typeof subtitleList[0] === "object" &&
-      subtitleList[0] !== null &&
-      "subtitle_url" in subtitleList[0] &&
-      typeof subtitleList[0].subtitle_url === "string"
-        ? subtitleList[0].subtitle_url
-        : null;
+    for (const page of pages) {
+      let attemptError: string | null = null;
+      let attemptSubtitleList: unknown[] = [];
+      let attemptSubtitleUrl: string | null = null;
+      let attemptTranscriptLength = 0;
 
-    if (!firstSubtitleUrl) {
-      throw new Error("NO_SUBTITLE");
+      try {
+        attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
+        attemptSubtitleUrl =
+          typeof attemptSubtitleList[0] === "object" &&
+          attemptSubtitleList[0] !== null &&
+          "subtitle_url" in attemptSubtitleList[0] &&
+          typeof attemptSubtitleList[0].subtitle_url === "string"
+            ? attemptSubtitleList[0].subtitle_url
+            : null;
+
+        if (attemptSubtitleUrl) {
+          const transcript = await fetchSubtitleContent(attemptSubtitleUrl);
+          attemptTranscriptLength = transcript.length;
+
+          if (!firstSubtitleUrl) {
+            cid = page.cid;
+            selectedPage = page.page;
+            selectedPart = page.part;
+            subtitleList = attemptSubtitleList;
+            firstSubtitleUrl = attemptSubtitleUrl;
+            transcriptPreview = transcript.slice(0, 200);
+            transcriptLength = transcript.length;
+          }
+        } else {
+          attemptError = "NO_SUBTITLE";
+        }
+      } catch (caughtAttemptError) {
+        console.error(caughtAttemptError);
+        attemptError =
+          caughtAttemptError instanceof Error
+            ? caughtAttemptError.message
+            : "UNKNOWN_ERROR";
+      }
+
+      pageAttempts.push({
+        page: page.page,
+        part: page.part,
+        cid: page.cid,
+        subtitle_count: attemptSubtitleList.length,
+        first_subtitle_url: attemptSubtitleUrl,
+        transcript_length: attemptTranscriptLength,
+        error: attemptError,
+      });
     }
 
-    const transcript = await fetchSubtitleContent(firstSubtitleUrl);
-    transcriptPreview = transcript.slice(0, 200);
-    transcriptLength = transcript.length;
+    if (!firstSubtitleUrl) {
+      cid = videoInfo.cid;
+      throw new Error("NO_SUBTITLE");
+    }
   } catch (caughtError) {
     console.error(caughtError);
     error =
@@ -77,7 +128,10 @@ export async function GET(request: Request) {
     final_url: resolved.finalUrl,
     title,
     cid,
+    selected_page: selectedPage,
+    selected_part: selectedPart,
     subtitle_list: subtitleList,
+    page_attempts: pageAttempts,
     first_subtitle_url: firstSubtitleUrl,
     transcript_preview: transcriptPreview,
     transcript_length: transcriptLength,
