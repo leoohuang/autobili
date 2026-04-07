@@ -1,7 +1,18 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-
+import { DebugPanel } from "@/app/debug-panel";
+function summarizeDebug(data: Record<string, unknown>) {
+  const pages = Array.isArray(data.page_attempts) ? data.page_attempts : [];
+  const hits = pages.filter(
+    (item) => typeof item === "object" && item && (item as { subtitle_count?: number }).subtitle_count,
+  );
+  const selectedPage = data.selected_page;
+  const error = data.error;
+  return `共 ${pages.length || 0} 页，命中 ${hits.length} 页字幕${
+    selectedPage ? `，当前选中第 ${selectedPage} 页` : ""
+  }${error ? `，状态：${String(error)}` : "，状态：可用"}`;
+}
 export default function Page() {
   const [url, setUrl] = useState("");
   const [topic, setTopic] = useState("");
@@ -9,6 +20,7 @@ export default function Page() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState("");
+  const [debugSummary, setDebugSummary] = useState("");
   const [debugLoading, setDebugLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -57,18 +69,17 @@ export default function Page() {
   async function handleDebugSubtitle() {
     setDebugLoading(true);
     setDebugInfo("");
+    setDebugSummary("");
 
     try {
-      const response = await fetch(
-        `/api/debug/subtitle?input=${encodeURIComponent(url)}`,
-      );
+      const response = await fetch(`/api/debug/subtitle?input=${encodeURIComponent(url)}`);
       const data = (await response.json()) as Record<string, unknown>;
+      setDebugSummary(summarizeDebug(data));
       setDebugInfo(JSON.stringify(data, null, 2));
     } catch (debugError) {
       console.error(debugError);
-      setDebugInfo(
-        JSON.stringify({ error: "DEBUG_REQUEST_FAILED" }, null, 2),
-      );
+      setDebugSummary("调试请求失败");
+      setDebugInfo(JSON.stringify({ error: "DEBUG_REQUEST_FAILED" }, null, 2));
     } finally {
       setDebugLoading(false);
     }
@@ -132,13 +143,7 @@ export default function Page() {
             </p>
           )}
         </section>
-
-        <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">字幕调试</h2>
-          <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-slate-700">
-            {debugInfo || "点击“检查字幕”后，这里会显示 B 站字幕接口的调试信息。"}
-          </pre>
-        </section>
+        <DebugPanel debugInfo={debugInfo} debugSummary={debugSummary} />
       </div>
     </main>
   );
