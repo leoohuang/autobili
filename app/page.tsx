@@ -1,7 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
 import { DebugPanel } from "@/app/debug-panel";
+import { FormEvent, useState } from "react";
+import { StatusPanel } from "@/app/status-panel";
+
 function summarizeDebug(data: Record<string, unknown>) {
   const pages = Array.isArray(data.page_attempts) ? data.page_attempts : [];
   const hits = pages.filter(
@@ -18,6 +20,7 @@ export default function Page() {
   const [topic, setTopic] = useState("");
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
+  const [statusText, setStatusText] = useState("等待输入");
   const [loading, setLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState("");
   const [debugSummary, setDebugSummary] = useState("");
@@ -28,6 +31,7 @@ export default function Page() {
     setLoading(true);
     setResult("");
     setError("");
+    setStatusText("正在请求生成接口...");
 
     try {
       const response = await fetch("/api/generate", {
@@ -41,6 +45,7 @@ export default function Page() {
       if (!response.ok) {
         const data = (await response.json()) as { message?: string };
         setError(data.message ?? "生成失败，请稍后重试");
+        setStatusText("生成失败");
         return;
       }
 
@@ -48,6 +53,7 @@ export default function Page() {
         throw new Error("EMPTY_STREAM");
       }
 
+      setStatusText("正在流式生成脚本...");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
@@ -58,9 +64,11 @@ export default function Page() {
       }
 
       setResult((prev) => prev + decoder.decode());
+      setStatusText("生成完成");
     } catch (submitError) {
       console.error(submitError);
       setError("生成失败，请稍后重试");
+      setStatusText("生成失败");
     } finally {
       setLoading(false);
     }
@@ -70,16 +78,19 @@ export default function Page() {
     setDebugLoading(true);
     setDebugInfo("");
     setDebugSummary("");
+    setStatusText("正在检查字幕...");
 
     try {
       const response = await fetch(`/api/debug/subtitle?input=${encodeURIComponent(url)}`);
       const data = (await response.json()) as Record<string, unknown>;
       setDebugSummary(summarizeDebug(data));
       setDebugInfo(JSON.stringify(data, null, 2));
+      setStatusText("字幕检查完成");
     } catch (debugError) {
       console.error(debugError);
       setDebugSummary("调试请求失败");
       setDebugInfo(JSON.stringify({ error: "DEBUG_REQUEST_FAILED" }, null, 2));
+      setStatusText("字幕检查失败");
     } finally {
       setDebugLoading(false);
     }
@@ -89,12 +100,8 @@ export default function Page() {
     <main className="min-h-screen bg-slate-50 px-6 py-16 text-slate-900">
       <div className="mx-auto flex max-w-[720px] flex-col gap-6">
         <div className="space-y-2 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            视频脚本改写器
-          </h1>
-          <p className="text-sm text-slate-500">
-            输入原视频链接和新话题，生成结构对齐的新口播稿。
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">视频脚本改写器</h1>
+          <p className="text-sm text-slate-500">输入原视频链接和新话题，生成结构对齐的新口播稿。</p>
         </div>
 
         <form
@@ -131,18 +138,7 @@ export default function Page() {
             </button>
           </div>
         </form>
-
-        <section className="min-h-[320px] rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          {error ? (
-            <p className="whitespace-pre-wrap text-sm leading-7 text-red-600">
-              {error}
-            </p>
-          ) : (
-            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-800">
-              {result || "生成结果会显示在这里。"}
-            </p>
-          )}
-        </section>
+        <StatusPanel error={error} loading={loading} result={result} statusText={statusText} />
         <DebugPanel debugInfo={debugInfo} debugSummary={debugSummary} />
       </div>
     </main>
