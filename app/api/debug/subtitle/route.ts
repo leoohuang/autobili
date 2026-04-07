@@ -2,7 +2,7 @@ import {
   fetchSubtitleContent,
   fetchSubtitleList,
   fetchVideoInfo,
-  resolveBvid,
+  resolveBvidDetails,
 } from "@/lib/bilibili";
 
 export const runtime = "nodejs";
@@ -11,11 +11,25 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawInput = searchParams.get("input")?.trim();
   const rawBvid = searchParams.get("bvid")?.trim();
-  const bvid = rawBvid || rawInput ? await resolveBvid(rawBvid || rawInput || "") : "";
+  const originalInput = rawBvid || rawInput || "";
+  const resolved = originalInput
+    ? await resolveBvidDetails(originalInput)
+    : {
+        bvid: null,
+        source: "invalid_input" as const,
+        finalUrl: null,
+      };
+  const bvid = resolved.bvid;
 
   if (!bvid) {
     return Response.json(
-      { error: "缺少可识别的 bvid 或视频链接" },
+      {
+        input: originalInput,
+        resolved_bvid: null,
+        resolve_source: resolved.source,
+        final_url: resolved.finalUrl,
+        error: "INVALID_BVID_INPUT",
+      },
       { status: 400 },
     );
   }
@@ -56,7 +70,11 @@ export async function GET(request: Request) {
   }
 
   return Response.json({
+    input: originalInput,
     bvid,
+    resolved_bvid: bvid,
+    resolve_source: resolved.source,
+    final_url: resolved.finalUrl,
     title,
     cid,
     subtitle_list: subtitleList,

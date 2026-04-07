@@ -22,6 +22,12 @@ export type BilibiliSubtitleItem = {
 
 const BVID_PATTERN = /BV[0-9A-Za-z]+/i;
 
+export type ResolveBvidResult = {
+  bvid: string | null;
+  source: "direct_match" | "redirect_url" | "fallback_url" | "invalid_input";
+  finalUrl: string | null;
+};
+
 type ViewResponse = {
   code: number;
   message: string;
@@ -73,11 +79,22 @@ export function extractBvid(input: string): string | null {
 }
 
 export async function resolveBvid(input: string): Promise<string | null> {
+  const result = await resolveBvidDetails(input);
+  return result.bvid;
+}
+
+export async function resolveBvidDetails(
+  input: string,
+): Promise<ResolveBvidResult> {
   const trimmedInput = input.trim();
   const directMatch = extractBvid(trimmedInput);
 
   if (directMatch) {
-    return directMatch;
+    return {
+      bvid: directMatch,
+      source: "direct_match",
+      finalUrl: null,
+    };
   }
 
   let parsedUrl: URL;
@@ -85,7 +102,11 @@ export async function resolveBvid(input: string): Promise<string | null> {
   try {
     parsedUrl = new URL(trimmedInput);
   } catch {
-    return null;
+    return {
+      bvid: null,
+      source: "invalid_input",
+      finalUrl: null,
+    };
   }
 
   try {
@@ -95,10 +116,18 @@ export async function resolveBvid(input: string): Promise<string | null> {
       cache: "no-store",
     });
     const finalUrl = response.url || parsedUrl.toString();
-    return extractBvid(finalUrl);
+    return {
+      bvid: extractBvid(finalUrl),
+      source: "redirect_url",
+      finalUrl,
+    };
   } catch (error) {
     console.error(error);
-    return extractBvid(parsedUrl.toString());
+    return {
+      bvid: extractBvid(parsedUrl.toString()),
+      source: "fallback_url",
+      finalUrl: parsedUrl.toString(),
+    };
   }
 }
 
