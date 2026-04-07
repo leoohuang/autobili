@@ -1,4 +1,4 @@
-import { fetchSubtitle } from "@/lib/bilibili";
+import { fetchSubtitle, resolveBvid } from "@/lib/bilibili";
 import { getOpenAIClient } from "@/lib/openai";
 import { PROMPT_A, PROMPT_B } from "@/lib/prompts";
 
@@ -11,11 +11,6 @@ type AnalysisResult = {
     type?: string;
   };
 };
-
-function extractBvid(url: string): string | null {
-  const match = url.match(/BV[0-9A-Za-z]+/i);
-  return match?.[0] ?? null;
-}
 
 function buildAnalysisPrompt(transcript: string): string {
   return PROMPT_A.replaceAll("{transcript}", transcript);
@@ -51,7 +46,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const bvid = extractBvid(url);
+    const bvid = await resolveBvid(url);
 
     if (!bvid) {
       return Response.json(

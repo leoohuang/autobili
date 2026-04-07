@@ -11,10 +11,6 @@ export default function Page() {
   const [debugInfo, setDebugInfo] = useState("");
   const [debugLoading, setDebugLoading] = useState(false);
 
-  function extractBvid(input: string) {
-    return input.match(/BV[0-9A-Za-z]+/i)?.[0] ?? input.trim();
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -63,9 +59,8 @@ export default function Page() {
     setDebugInfo("");
 
     try {
-      const bvid = extractBvid(url);
       const response = await fetch(
-        `/api/debug/subtitle?bvid=${encodeURIComponent(bvid)}`,
+        `/api/debug/subtitle?input=${encodeURIComponent(url)}`,
       );
       const data = (await response.json()) as Record<string, unknown>;
       setDebugInfo(JSON.stringify(data, null, 2));

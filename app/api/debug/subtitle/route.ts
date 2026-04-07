@@ -2,17 +2,20 @@ import {
   fetchSubtitleContent,
   fetchSubtitleList,
   fetchVideoInfo,
+  resolveBvid,
 } from "@/lib/bilibili";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const bvid = searchParams.get("bvid")?.trim() ?? "";
+  const rawInput = searchParams.get("input")?.trim();
+  const rawBvid = searchParams.get("bvid")?.trim();
+  const bvid = rawBvid || rawInput ? await resolveBvid(rawBvid || rawInput || "") : "";
 
   if (!bvid) {
     return Response.json(
-      { error: "缺少 bvid query 参数" },
+      { error: "缺少可识别的 bvid 或视频链接" },
       { status: 400 },
     );
   }

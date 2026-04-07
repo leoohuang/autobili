@@ -20,6 +20,8 @@ export type BilibiliSubtitleItem = {
   author_mid?: number;
 };
 
+const BVID_PATTERN = /BV[0-9A-Za-z]+/i;
+
 type ViewResponse = {
   code: number;
   message: string;
@@ -64,6 +66,40 @@ function normalizeSubtitleUrl(subtitleUrl: string): string {
   }
 
   return subtitleUrl;
+}
+
+export function extractBvid(input: string): string | null {
+  return input.match(BVID_PATTERN)?.[0] ?? null;
+}
+
+export async function resolveBvid(input: string): Promise<string | null> {
+  const trimmedInput = input.trim();
+  const directMatch = extractBvid(trimmedInput);
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(trimmedInput);
+  } catch {
+    return null;
+  }
+
+  try {
+    const response = await fetch(parsedUrl.toString(), {
+      headers: BILIBILI_HEADERS,
+      redirect: "follow",
+      cache: "no-store",
+    });
+    const finalUrl = response.url || parsedUrl.toString();
+    return extractBvid(finalUrl);
+  } catch (error) {
+    console.error(error);
+    return extractBvid(parsedUrl.toString());
+  }
 }
 
 export async function fetchVideoInfo(bvid: string): Promise<VideoInfo> {
