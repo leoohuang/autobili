@@ -1,4 +1,8 @@
-import { fetchSubtitle, resolveBvid } from "@/lib/bilibili";
+import {
+  probeSubtitles,
+  resolveBvidDetails,
+  summarizeSubtitleProbe,
+} from "@/lib/bilibili";
 import { getOpenAIClient } from "@/lib/openai";
 import { PROMPT_A, PROMPT_B } from "@/lib/prompts";
 
@@ -46,16 +50,42 @@ export async function POST(request: Request) {
       );
     }
 
-    const bvid = await resolveBvid(url);
+    const resolved = await resolveBvidDetails(url);
+    const bvid = resolved.bvid;
 
     if (!bvid) {
       return Response.json(
-        { error: "BAD_URL", message: "无法识别 B 站视频链接" },
+        {
+          error: "BAD_URL",
+          message: "无法识别 B 站视频链接",
+          debug_summary: `链接解析失败，来源：${resolved.source}`,
+        },
         { status: 400 },
       );
     }
 
-    const transcript = await fetchSubtitle(bvid);
+    const probe = await probeSubtitles(bvid);
+
+    if (!probe.transcript) {
+      return Response.json(
+        {
+          error: "NO_SUBTITLE",
+          message: "该视频没有字幕，暂不支持",
+          debug_summary: summarizeSubtitleProbe(probe),
+          debug_payload: {
+            bvid,
+            title: probe.title,
+            cid: probe.cid,
+            selected_page: probe.selected_page,
+            selected_part: probe.selected_part,
+            page_attempts: probe.page_attempts,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const transcript = probe.transcript;
     const openai = getOpenAIClient();
     const analysisPrompt = buildAnalysisPrompt(transcript);
     const analysisResponse = await openai.chat.completions.create({
@@ -124,13 +154,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(error);
-
-    if (error instanceof Error && error.message === "NO_SUBTITLE") {
-      return Response.json(
-        { error: "NO_SUBTITLE", message: "该视频没有字幕，暂不支持" },
-        { status: 400 },
-      );
-    }
 
     if (error instanceof Error && error.message === "MISSING_OPENAI_API_KEY") {
       return Response.json(

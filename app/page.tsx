@@ -15,6 +15,7 @@ function summarizeDebug(data: Record<string, unknown>) {
     selectedPage ? `，当前选中第 ${selectedPage} 页` : ""
   }${error ? `，状态：${String(error)}` : "，状态：可用"}`;
 }
+
 export default function Page() {
   const [url, setUrl] = useState("");
   const [topic, setTopic] = useState("");
@@ -43,8 +44,14 @@ export default function Page() {
       });
 
       if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setError(data.message ?? "生成失败，请稍后重试");
+        const data = (await response.json()) as {
+          debug_payload?: Record<string, unknown>;
+          debug_summary?: string;
+          message?: string;
+        };
+        setError([data.message ?? "生成失败，请稍后重试", data.debug_summary].filter(Boolean).join("\n"));
+        if (data.debug_summary) setDebugSummary(data.debug_summary);
+        if (data.debug_payload) setDebugInfo(JSON.stringify(data.debug_payload, null, 2));
         setStatusText("生成失败");
         return;
       }
@@ -104,10 +111,7 @@ export default function Page() {
           <p className="text-sm text-slate-500">输入原视频链接和新话题，生成结构对齐的新口播稿。</p>
         </div>
 
-        <form
-          className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-          onSubmit={handleSubmit}
-        >
+        <form className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200" onSubmit={handleSubmit}>
           <input
             className="rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-slate-400"
             placeholder="粘贴 B 站视频链接"

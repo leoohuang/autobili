@@ -26,6 +26,30 @@ export type BilibiliSubtitleItem = {
   author_mid?: number;
 };
 
+export type SubtitlePageAttempt = {
+  page: number;
+  part: string;
+  cid: number;
+  subtitle_count: number;
+  first_subtitle_url: string | null;
+  transcript_length: number;
+  error: string | null;
+};
+
+export type SubtitleProbeResult = {
+  title: string | null;
+  cid: number | null;
+  selected_page: number | null;
+  selected_part: string | null;
+  subtitle_list: BilibiliSubtitleItem[];
+  page_attempts: SubtitlePageAttempt[];
+  first_subtitle_url: string | null;
+  transcript_preview: string;
+  transcript_length: number;
+  transcript: string;
+  error: string | null;
+};
+
 const BVID_PATTERN = /BV[0-9A-Za-z]+/i;
 
 export type ResolveBvidResult = {
@@ -204,18 +228,111 @@ export async function fetchSubtitleContent(url: string): Promise<string> {
 }
 
 export async function fetchSubtitle(bvid: string): Promise<string> {
-  const pages = await fetchVideoPages(bvid);
+  const probe = await probeSubtitles(bvid);
 
-  for (const page of pages) {
-    const subtitleList = await fetchSubtitleList(bvid, page.cid);
-    const subtitleUrl = subtitleList[0]?.subtitle_url;
-
-    if (!subtitleUrl) {
-      continue;
-    }
-
-    return fetchSubtitleContent(subtitleUrl);
+  if (!probe.transcript) {
+    throw new Error("NO_SUBTITLE");
   }
 
-  throw new Error("NO_SUBTITLE");
+  return probe.transcript;
+}
+
+export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult> {
+  let title: string | null = null;
+  let cid: number | null = null;
+  let selectedPage: number | null = null;
+  let selectedPart: string | null = null;
+  let subtitleList: BilibiliSubtitleItem[] = [];
+  let firstSubtitleUrl: string | null = null;
+  let transcriptPreview = "";
+  let transcriptLength = 0;
+  let transcript = "";
+  let error: string | null = null;
+  const pageAttempts: SubtitlePageAttempt[] = [];
+
+  try {
+    const videoInfo = await fetchVideoInfo(bvid);
+    title = videoInfo.title;
+    const pages = await fetchVideoPages(bvid);
+
+    for (const page of pages) {
+      let attemptError: string | null = null;
+      let attemptSubtitleList: BilibiliSubtitleItem[] = [];
+      let attemptSubtitleUrl: string | null = null;
+      let attemptTranscriptLength = 0;
+
+      try {
+        attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
+        attemptSubtitleUrl = attemptSubtitleList[0]?.subtitle_url ?? null;
+
+        if (attemptSubtitleUrl) {
+          const nextTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
+          attemptTranscriptLength = nextTranscript.length;
+
+          if (!firstSubtitleUrl) {
+            cid = page.cid;
+            selectedPage = page.page;
+            selectedPart = page.part;
+            subtitleList = attemptSubtitleList;
+            firstSubtitleUrl = attemptSubtitleUrl;
+            transcriptPreview = nextTranscript.slice(0, 200);
+            transcriptLength = nextTranscript.length;
+            transcript = nextTranscript;
+          }
+        } else {
+          attemptError = "NO_SUBTITLE";
+        }
+      } catch (caughtAttemptError) {
+        console.error(caughtAttemptError);
+        attemptError =
+          caughtAttemptError instanceof Error
+            ? caughtAttemptError.message
+            : "UNKNOWN_ERROR";
+      }
+
+      pageAttempts.push({
+        page: page.page,
+        part: page.part,
+        cid: page.cid,
+        subtitle_count: attemptSubtitleList.length,
+        first_subtitle_url: attemptSubtitleUrl,
+        transcript_length: attemptTranscriptLength,
+        error: attemptError,
+      });
+    }
+
+    if (!firstSubtitleUrl) {
+      cid = videoInfo.cid;
+      error = "NO_SUBTITLE";
+    }
+  } catch (caughtError) {
+    console.error(caughtError);
+    error =
+      caughtError instanceof Error ? caughtError.message : "UNKNOWN_ERROR";
+  }
+
+  return {
+    title,
+    cid,
+    selected_page: selectedPage,
+    selected_part: selectedPart,
+    subtitle_list: subtitleList,
+    page_attempts: pageAttempts,
+    first_subtitle_url: firstSubtitleUrl,
+    transcript_preview: transcriptPreview,
+    transcript_length: transcriptLength,
+    transcript,
+    error,
+  };
+}
+
+export function summarizeSubtitleProbe(probe: {
+  selected_page: number | null;
+  page_attempts: Array<{ subtitle_count: number }>;
+  error: string | null;
+}) {
+  const hitCount = probe.page_attempts.filter((item) => item.subtitle_count > 0).length;
+  return `共 ${probe.page_attempts.length} 页，命中 ${hitCount} 页字幕${
+    probe.selected_page ? `，当前选中第 ${probe.selected_page} 页` : ""
+  }${probe.error ? `，状态：${probe.error}` : "，状态：可用"}`;
 }
