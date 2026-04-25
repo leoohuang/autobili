@@ -88,17 +88,48 @@ type SubtitleBodyResponse = {
   }>;
 };
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: BILIBILI_HEADERS,
-    cache: "no-store",
-  });
+const FETCH_TIMEOUT_MS = 10_000; // 10 seconds per request
+const MAX_RETRIES = 2;
 
-  if (!response.ok) {
-    throw new Error(`BILIBILI_HTTP_${response.status}`);
+async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        headers: BILIBILI_HEADERS,
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`BILIBILI_HTTP_${response.status}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      const isNetworkError =
+        error instanceof TypeError || // network failure / DNS error
+        lastError.message === "The user aborted a request"; // timeout
+
+      if (isNetworkError && attempt < retries) {
+        // Wait 500ms before retry
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      throw lastError;
+    }
   }
 
-  return (await response.json()) as T;
+  throw lastError!;
 }
 
 function normalizeSubtitleUrl(subtitleUrl: string): string {
@@ -286,7 +317,9 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
         console.error(caughtAttemptError);
         attemptError =
           caughtAttemptError instanceof Error
-            ? caughtAttemptError.message
+            ? caughtAttemptError.message === "The user aborted a request"
+              ? "TIMEOUT"
+              : caughtAttemptError.message
             : "UNKNOWN_ERROR";
       }
 
