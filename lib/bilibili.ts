@@ -115,11 +115,11 @@ async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
       clearTimeout(timeoutId);
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      const isNetworkError =
+      const isRetryableError =
         error instanceof TypeError || // network failure / DNS error
-        lastError.message === "The user aborted a request"; // timeout
+        lastError.name === "AbortError"; // timeout / abort (works in both Node.js and browser)
 
-      if (isNetworkError && attempt < retries) {
+      if (isRetryableError && attempt < retries) {
         // Wait 500ms before retry
         await new Promise((resolve) => setTimeout(resolve, 500));
         continue;
@@ -317,7 +317,7 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
         console.error(caughtAttemptError);
         attemptError =
           caughtAttemptError instanceof Error
-            ? caughtAttemptError.message === "The user aborted a request"
+            ? caughtAttemptError.name === "AbortError"
               ? "TIMEOUT"
               : caughtAttemptError.message
             : "UNKNOWN_ERROR";
