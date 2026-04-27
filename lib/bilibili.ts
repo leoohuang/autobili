@@ -176,11 +176,17 @@ export async function resolveBvidDetails(
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     const response = await fetch(parsedUrl.toString(), {
       headers: BILIBILI_HEADERS,
       redirect: "follow",
       cache: "no-store",
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
+
     const finalUrl = response.url || parsedUrl.toString();
     return {
       bvid: extractBvid(finalUrl),
