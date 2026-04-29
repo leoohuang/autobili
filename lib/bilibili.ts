@@ -315,6 +315,17 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
             transcriptPreview = nextTranscript.slice(0, 200);
             transcriptLength = nextTranscript.length;
             transcript = nextTranscript;
+            // Found valid transcript — no need to probe remaining pages
+            pageAttempts.push({
+              page: page.page,
+              part: page.part,
+              cid: page.cid,
+              subtitle_count: attemptSubtitleList.length,
+              first_subtitle_url: attemptSubtitleUrl,
+              transcript_length: attemptTranscriptLength,
+              error: null,
+            });
+            break;
           }
         } else {
           attemptError = "NO_SUBTITLE";
