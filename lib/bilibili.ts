@@ -175,32 +175,56 @@ export async function resolveBvidDetails(
     };
   }
 
-  try {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(parsedUrl.toString(), {
-      headers: BILIBILI_HEADERS,
-      redirect: "follow",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+    try {
+      const response = await fetch(parsedUrl.toString(), {
+        headers: BILIBILI_HEADERS,
+        redirect: "follow",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    const finalUrl = response.url || parsedUrl.toString();
-    return {
-      bvid: extractBvid(finalUrl),
-      source: "redirect_url",
-      finalUrl,
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      bvid: extractBvid(parsedUrl.toString()),
-      source: "fallback_url",
-      finalUrl: parsedUrl.toString(),
-    };
+      const finalUrl = response.url || parsedUrl.toString();
+      return {
+        bvid: extractBvid(finalUrl),
+        source: "redirect_url",
+        finalUrl,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      const isRetryableError =
+        error instanceof TypeError || // network failure / DNS error
+        lastError.name === "AbortError"; // timeout / abort
+
+      if (isRetryableError && attempt < MAX_RETRIES) {
+        // Wait 500ms before retry
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      console.error(error);
+      return {
+        bvid: extractBvid(parsedUrl.toString()),
+        source: "fallback_url",
+        finalUrl: parsedUrl.toString(),
+      };
+    }
   }
+
+  // This should not be reached, but TypeScript needs a return
+  return {
+    bvid: extractBvid(parsedUrl.toString()),
+    source: "fallback_url",
+    finalUrl: parsedUrl.toString(),
+  };
 }
 
 export async function fetchVideoInfo(bvid: string): Promise<VideoInfo> {
