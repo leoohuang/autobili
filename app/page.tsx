@@ -1,7 +1,7 @@
 "use client";
 
 import { DebugPanel } from "@/app/debug-panel";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { StatusPanel } from "@/app/status-panel";
 
 function summarizeDebug(data: Record<string, unknown>) {
@@ -26,9 +26,22 @@ export default function Page() {
   const [debugInfo, setDebugInfo] = useState("");
   const [debugSummary, setDebugSummary] = useState("");
   const [debugLoading, setDebugLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  function handleCancel() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setStatusText("已取消生成");
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    abortRef.current?.abort();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setResult("");
     setError("");
@@ -41,6 +54,7 @@ export default function Page() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ url, topic }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -73,11 +87,17 @@ export default function Page() {
       setResult((prev) => prev + decoder.decode());
       setStatusText("生成完成");
     } catch (submitError) {
+      if (submitError instanceof DOMException && submitError.name === "AbortError") {
+        return;
+      }
       console.error(submitError);
       setError("生成失败，请稍后重试");
       setStatusText("生成失败");
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        setLoading(false);
+        abortRef.current = null;
+      }
     }
   }
 
@@ -132,6 +152,15 @@ export default function Page() {
             >
               {loading ? "生成中..." : "生成"}
             </button>
+            {loading && (
+              <button
+                className="rounded-xl border border-red-300 bg-white px-4 py-3 font-medium text-red-600 transition hover:bg-red-50"
+                onClick={handleCancel}
+                type="button"
+              >
+                取消
+              </button>
+            )}
             <button
               className="rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
               disabled={debugLoading || !url.trim()}
