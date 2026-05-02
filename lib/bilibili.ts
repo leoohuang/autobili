@@ -312,9 +312,17 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
   const pageAttempts: SubtitlePageAttempt[] = [];
 
   try {
-    const videoInfo = await fetchVideoInfo(bvid);
-    title = videoInfo.title;
-    const pages = await fetchVideoPages(bvid);
+    // Single API call instead of two separate fetchVideoInfo + fetchVideoPages
+    const viewData = await fetchViewData(bvid);
+    title = viewData.data?.title?.trim() ?? null;
+
+    const pages = (viewData.data?.pages ?? [])
+      .map((item) => ({
+        cid: item.cid ?? 0,
+        page: item.page ?? 0,
+        part: item.part?.trim() ?? "",
+      }))
+      .filter((item) => item.cid > 0);
 
     for (const page of pages) {
       let attemptError: string | null = null;
@@ -376,7 +384,7 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
     }
 
     if (!firstSubtitleUrl) {
-      cid = videoInfo.cid;
+      cid = viewData.data?.cid ?? null;
       error = "NO_SUBTITLE";
     }
   } catch (caughtError) {
