@@ -210,6 +210,7 @@ export async function resolveBvidDetails(
         continue;
       }
 
+      // Either non-retryable error or final retry attempt exhausted
       console.error(error);
       return {
         bvid: extractBvid(parsedUrl.toString()),
@@ -219,7 +220,7 @@ export async function resolveBvidDetails(
     }
   }
 
-  // This should not be reached, but TypeScript needs a return
+  // All retries exhausted with retryable errors - return fallback
   return {
     bvid: extractBvid(parsedUrl.toString()),
     source: "fallback_url",
