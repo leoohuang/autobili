@@ -2,11 +2,6 @@ const BILIBILI_HEADERS = {
   "User-Agent": "Mozilla/5.0",
 };
 
-export type VideoInfo = {
-  cid: number;
-  title: string;
-};
-
 export type VideoPage = {
   cid: number;
   page: number;
@@ -128,7 +123,7 @@ async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
       throw lastError;
     }
   }
-
+  // TypeScript control flow analysis requires this unreachable throw
   throw lastError!;
 }
 
@@ -142,11 +137,6 @@ function normalizeSubtitleUrl(subtitleUrl: string): string {
 
 export function extractBvid(input: string): string | null {
   return input.match(BVID_PATTERN)?.[0] ?? null;
-}
-
-export async function resolveBvid(input: string): Promise<string | null> {
-  const result = await resolveBvidDetails(input);
-  return result.bvid;
 }
 
 export async function resolveBvidDetails(
@@ -219,25 +209,12 @@ export async function resolveBvidDetails(
       };
     }
   }
-
-  // All retries exhausted with retryable errors - return fallback
+  // TypeScript control flow analysis requires this unreachable return
   return {
     bvid: extractBvid(parsedUrl.toString()),
-    source: "fallback_url",
+    source: "fallback_url" as const,
     finalUrl: parsedUrl.toString(),
   };
-}
-
-export async function fetchVideoInfo(bvid: string): Promise<VideoInfo> {
-  const viewData = await fetchViewData(bvid);
-  const cid = viewData.data?.cid;
-  const title = viewData.data?.title?.trim();
-
-  if (!cid || !title) {
-    throw new Error("NO_SUBTITLE");
-  }
-
-  return { cid, title };
 }
 
 async function fetchViewData(bvid: string): Promise<ViewResponse> {
