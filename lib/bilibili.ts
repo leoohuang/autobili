@@ -86,6 +86,25 @@ type SubtitleBodyResponse = {
 const FETCH_TIMEOUT_MS = 10_000; // 10 seconds per request
 const MAX_RETRIES = 2;
 
+const RETRYABLE_HTTP_STATUS = new Set([412, 429, 502, 503, 504]);
+
+class RetryableHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`BILIBILI_HTTP_${status}`);
+    this.name = "RetryableHttpError";
+    this.status = status;
+  }
+}
+
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof TypeError) return true; // network failure / DNS error
+  if (error instanceof Error && error.name === "AbortError") return true; // timeout / abort
+  if (error instanceof RetryableHttpError) return true; // transient server errors
+  return false;
+}
+
 async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
   let lastError: Error | null = null;
 
@@ -102,6 +121,9 @@ async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        if (RETRYABLE_HTTP_STATUS.has(response.status)) {
+          throw new RetryableHttpError(response.status);
+        }
         throw new Error(`BILIBILI_HTTP_${response.status}`);
       }
 
@@ -110,13 +132,10 @@ async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
       clearTimeout(timeoutId);
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      const isRetryableError =
-        error instanceof TypeError || // network failure / DNS error
-        lastError.name === "AbortError"; // timeout / abort (works in both Node.js and browser)
-
-      if (isRetryableError && attempt < retries) {
-        // Wait 500ms before retry
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      if (isRetryableError(error) && attempt < retries) {
+        // Exponential backoff: 500ms, 1000ms
+        const delayMs = 500 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
       }
 
