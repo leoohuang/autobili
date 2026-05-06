@@ -209,13 +209,10 @@ export async function resolveBvidDetails(
       clearTimeout(timeoutId);
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      const isRetryableError =
-        error instanceof TypeError || // network failure / DNS error
-        lastError.name === "AbortError"; // timeout / abort
-
-      if (isRetryableError && attempt < MAX_RETRIES) {
-        // Wait 500ms before retry
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      if (isRetryableError(error) && attempt < MAX_RETRIES) {
+        // Exponential backoff: 500ms, 1000ms
+        const delayMs = 500 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
       }
 
