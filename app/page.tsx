@@ -27,6 +27,7 @@ export default function Page() {
   const [debugSummary, setDebugSummary] = useState("");
   const [debugLoading, setDebugLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const resultRef = useRef("");
 
   function handleCancel() {
     abortRef.current?.abort();
@@ -44,6 +45,7 @@ export default function Page() {
 
     setLoading(true);
     setResult("");
+    resultRef.current = "";
     setError("");
     setStatusText("正在请求生成接口...");
 
@@ -81,18 +83,33 @@ export default function Page() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        setResult((prev) => prev + decoder.decode(value, { stream: true }));
+        const decoded = decoder.decode(value, { stream: true });
+        setResult((prev) => {
+          const next = prev + decoded;
+          resultRef.current = next;
+          return next;
+        });
       }
 
-      setResult((prev) => prev + decoder.decode());
+      const flushed = decoder.decode();
+      setResult((prev) => {
+        const next = prev + flushed;
+        resultRef.current = next;
+        return next;
+      });
       setStatusText("生成完成");
     } catch (submitError) {
       if (submitError instanceof DOMException && submitError.name === "AbortError") {
         return;
       }
       console.error(submitError);
-      setError("生成失败，请稍后重试");
-      setStatusText("生成失败");
+      // Preserve partial result on stream error instead of discarding it
+      if (resultRef.current) {
+        setStatusText("生成中断，已保留部分结果");
+      } else {
+        setError("生成失败，请稍后重试");
+        setStatusText("生成失败");
+      }
     } finally {
       if (abortRef.current === controller) {
         setLoading(false);
