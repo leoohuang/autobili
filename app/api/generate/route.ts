@@ -105,7 +105,12 @@ export async function POST(request: Request) {
       throw new Error("EMPTY_ANALYSIS");
     }
 
-    const analysis = JSON.parse(analysisText) as AnalysisResult;
+    let analysis: AnalysisResult;
+    try {
+      analysis = JSON.parse(analysisText) as AnalysisResult;
+    } catch {
+      throw new Error("INVALID_ANALYSIS_JSON");
+    }
     const targetWords = Math.max(1, Math.round(analysis.total_words ?? 0));
     const targetMinutes = (targetWords / 240).toFixed(1);
     const hookType = analysis.hook?.type ?? "其他";
@@ -158,6 +163,13 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "MISSING_OPENAI_API_KEY") {
       return Response.json(
         { error: "MISSING_OPENAI_API_KEY", message: "缺少 OPENAI_API_KEY" },
+        { status: 500 },
+      );
+    }
+
+    if (error instanceof Error && error.message === "INVALID_ANALYSIS_JSON") {
+      return Response.json(
+        { error: "INVALID_ANALYSIS_JSON", message: "AI 返回的分析结果格式异常，请重试" },
         { status: 500 },
       );
     }
