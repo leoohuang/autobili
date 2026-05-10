@@ -9,6 +9,22 @@ type StatusPanelProps = {
   statusText: string;
 };
 
+/**
+ * Count words in mixed CJK/Latin text.
+ * - Each CJK character = 1 word
+ * - Latin words are split by whitespace, with pure-punctuation tokens excluded
+ */
+function countWords(text: string): number {
+  if (!text.trim()) return 0;
+  const cjkChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
+  const stripped = text.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g, " ");
+  const otherWords = stripped
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.replace(/[\p{P}\p{S}]/gu, "").length > 0).length;
+  return cjkChars + otherWords;
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -43,7 +59,7 @@ export function StatusPanel({
   statusText,
 }: StatusPanelProps) {
   const badge = loading ? "Generating" : error ? "Error" : result ? "Ready" : "Idle";
-  const wordCount = result.trim() ? result.trim().length : 0;
+  const wordCount = countWords(result);
 
   return (
     <section className="min-h-[320px] rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
