@@ -108,8 +108,8 @@ export async function POST(request: Request) {
     let analysis: AnalysisResult;
     try {
       analysis = JSON.parse(analysisText) as AnalysisResult;
-    } catch {
-      throw new Error("INVALID_ANALYSIS_JSON");
+    } catch (parseError) {
+      throw new Error(`INVALID_ANALYSIS_JSON: ${analysisText.slice(0, 500)}`);
     }
     const targetWords = Math.max(1, Math.round(analysis.total_words ?? 0));
     const targetMinutes = (targetWords / 240).toFixed(1);
