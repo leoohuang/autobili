@@ -237,7 +237,15 @@ async function fetchViewData(bvid: string): Promise<ViewResponse> {
   const viewUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(
     bvid,
   )}`;
-  return fetchJson<ViewResponse>(viewUrl);
+  const viewData = await fetchJson<ViewResponse>(viewUrl);
+
+  if (viewData.code !== 0) {
+    throw new Error(
+      `BILIBILI_API_ERROR(${viewData.code}): ${viewData.message || "未知错误"}`,
+    );
+  }
+
+  return viewData;
 }
 
 export async function fetchVideoPages(bvid: string): Promise<VideoPage[]> {
@@ -261,6 +269,12 @@ export async function fetchSubtitleList(
     bvid,
   )}&cid=${cid}`;
   const subtitleListData = await fetchJson<SubtitleListResponse>(subtitleListUrl);
+
+  if (subtitleListData.code !== 0) {
+    throw new Error(
+      `BILIBILI_API_ERROR(${subtitleListData.code}): ${subtitleListData.message || "未知错误"}`,
+    );
+  }
 
   return subtitleListData.data?.subtitle?.subtitles ?? [];
 }
