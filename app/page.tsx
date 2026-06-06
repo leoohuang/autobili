@@ -36,9 +36,24 @@ export default function Page() {
     setStatusText("已取消生成");
   }
 
+  function validateInput(url: string, topic: string): string | null {
+    if (!url.trim()) return "请输入 B 站视频链接";
+    if (!topic.trim()) return "请输入新话题";
+    if (topic.trim().length < 2) return "话题至少需要 2 个字符";
+    if (topic.trim().length > 500) return "话题不能超过 500 个字符";
+    return null;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     abortRef.current?.abort();
+
+    const validationError = validateInput(url, topic);
+    if (validationError) {
+      setError(validationError);
+      setStatusText("输入验证失败");
+      return;
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -119,6 +134,11 @@ export default function Page() {
   }
 
   async function handleDebugSubtitle() {
+    if (!url.trim()) {
+      setDebugSummary("请先输入 B 站视频链接");
+      return;
+    }
+
     setDebugLoading(true);
     setDebugInfo("");
     setDebugSummary("");

@@ -50,6 +50,20 @@ export async function POST(request: Request) {
       );
     }
 
+    if (topic.length < 2) {
+      return Response.json(
+        { error: "INVALID_TOPIC", message: "话题至少需要 2 个字符" },
+        { status: 400 },
+      );
+    }
+
+    if (topic.length > 500) {
+      return Response.json(
+        { error: "INVALID_TOPIC", message: "话题不能超过 500 个字符" },
+        { status: 400 },
+      );
+    }
+
     const resolved = await resolveBvidDetails(url);
     const bvid = resolved.bvid;
 
@@ -111,7 +125,16 @@ export async function POST(request: Request) {
     } catch (parseError) {
       throw new Error(`INVALID_ANALYSIS_JSON: ${analysisText.slice(0, 500)}`);
     }
-    const targetWords = Math.max(1, Math.round(analysis.total_words ?? 0));
+
+    if (!analysis || typeof analysis !== "object") {
+      throw new Error(`INVALID_ANALYSIS_JSON: Analysis is not an object: ${analysisText.slice(0, 500)}`);
+    }
+
+    if (!analysis.total_words || analysis.total_words < 0) {
+      throw new Error(`INVALID_ANALYSIS_JSON: Missing or invalid total_words: ${analysisText.slice(0, 500)}`);
+    }
+
+    const targetWords = Math.max(1, Math.round(analysis.total_words));
     const targetMinutes = (targetWords / 240).toFixed(1);
     const hookType = analysis.hook?.type ?? "其他";
     const scriptPrompt = buildScriptPrompt({
