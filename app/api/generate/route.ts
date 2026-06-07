@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import {
   probeSubtitles,
   resolveBvidDetails,
@@ -183,9 +184,50 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error(error);
 
+    // Handle OpenAI API errors with user-friendly messages
+    if (error instanceof OpenAI.APIError) {
+      const status = error.status;
+      if (status === 429) {
+        return Response.json(
+          { error: "RATE_LIMIT", message: "AI 服务请求过于频繁，请稍后再试" },
+          { status: 429 },
+        );
+      }
+      if (status === 401) {
+        return Response.json(
+          { error: "INVALID_API_KEY", message: "OPENAI_API_KEY 无效或已过期，请检查配置" },
+          { status: 500 },
+        );
+      }
+      if (status === 403) {
+        return Response.json(
+          { error: "INSUFFICIENT_PERMISSIONS", message: "API 密钥权限不足，请检查 OPENAI_API_KEY 配置" },
+          { status: 500 },
+        );
+      }
+      if (status && status >= 500) {
+        return Response.json(
+          { error: "OPENAI_SERVER_ERROR", message: "AI 服务暂时不可用，请稍后重试" },
+          { status: 503 },
+        );
+      }
+      return Response.json(
+        { error: "OPENAI_API_ERROR", message: `AI 服务错误 (${status}): ${error.message}` },
+        { status: 500 },
+      );
+    }
+
+    // Handle OpenAI connection errors
+    if (error instanceof OpenAI.APIConnectionError) {
+      return Response.json(
+        { error: "API_CONNECTION_ERROR", message: "无法连接到 AI 服务，请检查网络后重试" },
+        { status: 503 },
+      );
+    }
+
     if (error instanceof Error && error.message === "MISSING_OPENAI_API_KEY") {
       return Response.json(
-        { error: "MISSING_OPENAI_API_KEY", message: "缺少 OPENAI_API_KEY" },
+        { error: "MISSING_OPENAI_API_KEY", message: "缺少 OPENAI_API_KEY 环境变量" },
         { status: 500 },
       );
     }
