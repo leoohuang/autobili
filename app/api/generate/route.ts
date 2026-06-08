@@ -232,14 +232,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (error instanceof Error && error.message === "EMPTY_ANALYSIS") {
+    if (error instanceof Error && error.message.startsWith("EMPTY_ANALYSIS")) {
       return Response.json(
         { error: "EMPTY_ANALYSIS", message: "AI 返回的分析结果为空，请重试" },
         { status: 500 },
       );
     }
 
-    if (error instanceof Error && error.message === "INVALID_ANALYSIS_JSON") {
+    if (error instanceof Error && error.message.startsWith("INVALID_ANALYSIS_JSON")) {
       return Response.json(
         { error: "INVALID_ANALYSIS_JSON", message: "AI 返回的分析结果格式异常，请重试" },
         { status: 500 },
