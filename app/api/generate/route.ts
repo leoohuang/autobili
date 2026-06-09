@@ -103,16 +103,19 @@ export async function POST(request: Request) {
     const transcript = probe.transcript;
     const openai = getOpenAIClient();
     const analysisPrompt = buildAnalysisPrompt(transcript);
-    const analysisResponse = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "user",
-          content: analysisPrompt,
-        },
-      ],
-      response_format: { type: "json_object" },
-    });
+    const analysisResponse = await openai.chat.completions.create(
+      {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: analysisPrompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      },
+      { timeout: 60_000 },
+    );
 
     const analysisText = analysisResponse.choices[0]?.message?.content;
 
@@ -146,16 +149,19 @@ export async function POST(request: Request) {
       hookType,
     });
 
-    const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "user",
-          content: scriptPrompt,
-        },
-      ],
-      stream: true,
-    });
+    const stream = await openai.chat.completions.create(
+      {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: scriptPrompt,
+          },
+        ],
+        stream: true,
+      },
+      { timeout: 120_000 },
+    );
 
     const encoder = new TextEncoder();
     const readableStream = new ReadableStream({
