@@ -245,6 +245,10 @@ async function fetchViewData(bvid: string): Promise<ViewResponse> {
     );
   }
 
+  if (!viewData.data) {
+    throw new Error("VIDEO_DATA_NULL");
+  }
+
   return viewData;
 }
 
