@@ -134,11 +134,21 @@ export async function POST(request: Request) {
       throw new Error(`INVALID_ANALYSIS_JSON: Analysis is not an object: ${analysisText.slice(0, 500)}`);
     }
 
-    if (!analysis.total_words || analysis.total_words < 0) {
-      throw new Error(`INVALID_ANALYSIS_JSON: Missing or invalid total_words: ${analysisText.slice(0, 500)}`);
+    // Validate total_words: must be a positive integer within reasonable range
+    const totalWords = analysis.total_words;
+    if (
+      typeof totalWords !== "number" ||
+      !Number.isInteger(totalWords) ||
+      totalWords <= 0 ||
+      totalWords > 100000 // Reasonable upper bound for video transcripts
+    ) {
+      throw new Error(
+        `INVALID_ANALYSIS_JSON: total_words must be a positive integer <= 100000, got: ${totalWords}. Raw: ${analysisText.slice(0, 500)}`,
+      );
     }
 
-    const targetWords = Math.max(1, Math.round(analysis.total_words));
+    // totalWords is now guaranteed to be a valid positive integer
+    const targetWords = totalWords;
     const targetMinutes = (targetWords / 240).toFixed(1);
     const hookType = analysis.hook?.type ?? "其他";
     const scriptPrompt = buildScriptPrompt({
