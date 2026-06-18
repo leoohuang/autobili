@@ -12,9 +12,26 @@ export const maxDuration = 60;
 
 type AnalysisResult = {
   total_words?: number;
+  topic?: string;
   hook?: {
     type?: string;
+    content?: string;
+    why_it_works?: string;
   };
+  structure?: Array<{
+    section?: string;
+    function?: string;
+    word_count?: number;
+    key_points?: string[];
+  }>;
+  rhetorical_devices?: string[];
+  reusable_assets?: {
+    viewpoints?: string[];
+    examples?: string[];
+    analogies?: string[];
+  };
+  pacing?: string;
+  ending?: string;
 };
 
 function buildAnalysisPrompt(transcript: string): string {
@@ -132,6 +149,27 @@ export async function POST(request: Request) {
 
     if (!analysis || typeof analysis !== "object") {
       throw new Error(`INVALID_ANALYSIS_JSON: Analysis is not an object: ${analysisText.slice(0, 500)}`);
+    }
+
+    // Validate structure: must be a non-empty array
+    if (!Array.isArray(analysis.structure) || analysis.structure.length === 0) {
+      throw new Error(
+        `INVALID_ANALYSIS_JSON: 'structure' must be a non-empty array. Raw: ${analysisText.slice(0, 500)}`,
+      );
+    }
+
+    // Validate each structure item has required fields
+    for (const [index, section] of analysis.structure.entries()) {
+      if (!section.section || typeof section.section !== "string") {
+        throw new Error(
+          `INVALID_ANALYSIS_JSON: structure[${index}].section is missing or not a string. Raw: ${analysisText.slice(0, 500)}`,
+        );
+      }
+      if (typeof section.word_count !== "number" || section.word_count < 0) {
+        throw new Error(
+          `INVALID_ANALYSIS_JSON: structure[${index}].word_count must be a non-negative number. Raw: ${analysisText.slice(0, 500)}`,
+        );
+      }
     }
 
     // Validate total_words: must be a positive integer within reasonable range
@@ -257,7 +295,7 @@ export async function POST(request: Request) {
 
     if (error instanceof Error && error.message.startsWith("INVALID_ANALYSIS_JSON")) {
       return Response.json(
-        { error: "INVALID_ANALYSIS_JSON", message: "AI 返回的分析结果格式异常，请重试" },
+        { error: "INVALID_ANALYSIS_JSON", message: `AI 返回的分析结果格式异常: ${error.message.slice(0, 200)}，请重试` },
         { status: 500 },
       );
     }
