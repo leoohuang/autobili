@@ -10,6 +10,8 @@ import { PROMPT_A, PROMPT_B } from "@/lib/prompts";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+
 type AnalysisResult = {
   total_words?: number;
   topic?: string;
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
     const analysisPrompt = buildAnalysisPrompt(transcript);
     const analysisResponse = await openai.chat.completions.create(
       {
-        model: "gpt-4o",
+        model: OPENAI_MODEL,
         messages: [
           {
             role: "user",
@@ -199,7 +201,7 @@ export async function POST(request: Request) {
 
     const stream = await openai.chat.completions.create(
       {
-        model: "gpt-4o",
+        model: OPENAI_MODEL,
         messages: [
           {
             role: "user",
