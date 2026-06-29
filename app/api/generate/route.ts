@@ -70,6 +70,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (url.length > 2000) {
+      return Response.json(
+        { error: "INVALID_URL", message: "链接过长，请重新复制粘贴正确的视频链接" },
+        { status: 400 },
+      );
+    }
+
     if (topic.length < 2) {
       return Response.json(
         { error: "INVALID_TOPIC", message: "话题至少需要 2 个字符" },

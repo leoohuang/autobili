@@ -38,6 +38,7 @@ export default function Page() {
 
   function validateInput(url: string, topic: string): string | null {
     if (!url.trim()) return "请输入 B 站视频链接";
+    if (url.trim().length > 2000) return "链接过长，请重新复制粘贴正确的视频链接";
     if (!topic.trim()) return "请输入新话题";
     if (topic.trim().length < 2) return "话题至少需要 2 个字符";
     if (topic.trim().length > 500) return "话题不能超过 500 个字符";
