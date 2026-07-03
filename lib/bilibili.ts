@@ -336,40 +336,41 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
       }))
       .filter((item) => item.cid > 0);
 
+    // Probe ALL pages and select the one with the longest transcript
+    let bestTranscript = "";
+    let bestTranscriptLength = 0;
+    let bestTranscriptPreview = "";
+    let bestSubtitleUrl: string | null = null;
+    let bestSubtitleList: BilibiliSubtitleItem[] = [];
+    let bestPage: number | null = null;
+    let bestPart: string | null = null;
+    let bestCid: number | null = null;
+
     for (const page of pages) {
       let attemptError: string | null = null;
       let attemptSubtitleList: BilibiliSubtitleItem[] = [];
       let attemptSubtitleUrl: string | null = null;
       let attemptTranscriptLength = 0;
+      let attemptTranscript = "";
 
       try {
         attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
         attemptSubtitleUrl = attemptSubtitleList[0]?.subtitle_url ?? null;
 
         if (attemptSubtitleUrl) {
-          const nextTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
-          attemptTranscriptLength = nextTranscript.length;
+          attemptTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
+          attemptTranscriptLength = attemptTranscript.length;
 
-          if (!firstSubtitleUrl) {
-            cid = page.cid;
-            selectedPage = page.page;
-            selectedPart = page.part;
-            subtitleList = attemptSubtitleList;
-            firstSubtitleUrl = attemptSubtitleUrl;
-            transcriptPreview = nextTranscript.slice(0, 200);
-            transcriptLength = nextTranscript.length;
-            transcript = nextTranscript;
-            // Found valid transcript — no need to probe remaining pages
-            pageAttempts.push({
-              page: page.page,
-              part: page.part,
-              cid: page.cid,
-              subtitle_count: attemptSubtitleList.length,
-              first_subtitle_url: attemptSubtitleUrl,
-              transcript_length: attemptTranscriptLength,
-              error: null,
-            });
-            break;
+          // Track the best (longest) transcript across all pages
+          if (attemptTranscriptLength > bestTranscriptLength) {
+            bestTranscript = attemptTranscript;
+            bestTranscriptLength = attemptTranscriptLength;
+            bestTranscriptPreview = attemptTranscript.slice(0, 200);
+            bestSubtitleUrl = attemptSubtitleUrl;
+            bestSubtitleList = attemptSubtitleList;
+            bestPage = page.page;
+            bestPart = page.part;
+            bestCid = page.cid;
           }
         } else {
           attemptError = "NO_SUBTITLE";
@@ -395,7 +396,17 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
       });
     }
 
-    if (!firstSubtitleUrl) {
+    // Use the best transcript found across all pages
+    if (bestTranscriptLength > 0) {
+      cid = bestCid;
+      selectedPage = bestPage;
+      selectedPart = bestPart;
+      subtitleList = bestSubtitleList;
+      firstSubtitleUrl = bestSubtitleUrl;
+      transcriptPreview = bestTranscriptPreview;
+      transcriptLength = bestTranscriptLength;
+      transcript = bestTranscript;
+    } else {
       cid = viewData.data?.cid ?? null;
       error = "NO_SUBTITLE";
     }
