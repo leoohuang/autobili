@@ -85,6 +85,7 @@ type SubtitleBodyResponse = {
 
 const FETCH_TIMEOUT_MS = 10_000; // 10 seconds per request
 const MAX_RETRIES = 2;
+const MAX_CONCURRENT_SUBTITLE_REQUESTS = 5; // cap concurrent subtitle API calls
 
 const RETRYABLE_HTTP_STATUS = new Set([412, 429, 502, 503, 504]);
 
@@ -103,6 +104,40 @@ function isRetryableError(error: unknown): boolean {
   if (error instanceof Error && error.name === "AbortError") return true; // timeout / abort
   if (error instanceof RetryableHttpError) return true; // transient server errors
   return false;
+}
+
+/**
+ * A lightweight semaphore for limiting concurrent async operations.
+ * Acquire blocks until a slot is available; release frees it.
+ */
+class Semaphore {
+  private running = 0;
+
+  constructor(private readonly limit: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.running < this.limit) {
+      this.running++;
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (self.running < self.limit) {
+          self.running++;
+          resolve();
+        } else {
+          setTimeout(check, 50);
+        }
+      };
+      check();
+    });
+  }
+
+  release(): void {
+    this.running--;
+  }
 }
 
 async function fetchJson<T>(url: string, retries = MAX_RETRIES): Promise<T> {
@@ -346,23 +381,39 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
     let bestPart: string | null = null;
     let bestCid: number | null = null;
 
-    for (const page of pages) {
-      let attemptError: string | null = null;
-      let attemptSubtitleList: BilibiliSubtitleItem[] = [];
-      let attemptSubtitleUrl: string | null = null;
-      let attemptTranscriptLength = 0;
-      let attemptTranscript = "";
+    // Submit all pages through a semaphore to cap concurrency.
+    // This avoids Bilibili IP rate-limits on multi-page videos while
+    // still running multiple requests in parallel (up to MAX_CONCURRENT_SUBTITLE_REQUESTS).
+    const subtitleSemaphore = new Semaphore(MAX_CONCURRENT_SUBTITLE_REQUESTS);
 
+    // Pre-allocate pageAttempts in original page order
+    for (const page of pages) {
+      pageAttempts.push({
+        page: page.page,
+        part: page.part,
+        cid: page.cid,
+        subtitle_count: 0,
+        first_subtitle_url: null,
+        transcript_length: 0,
+        error: null,
+      });
+    }
+
+    // Worker: fetches one page's subtitles, updates shared best* vars, returns record
+    const worker = async (page: VideoPage, index: number) => {
+      await subtitleSemaphore.acquire();
       try {
-        attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
-        attemptSubtitleUrl = attemptSubtitleList[0]?.subtitle_url ?? null;
+        const attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
+        const attemptSubtitleUrl = attemptSubtitleList[0]?.subtitle_url ?? null;
+        let attemptTranscriptLength = 0;
 
         if (attemptSubtitleUrl) {
-          attemptTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
+          const attemptTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
           attemptTranscriptLength = attemptTranscript.length;
 
-          // Track the best (longest) transcript across all pages
           if (attemptTranscriptLength > bestTranscriptLength) {
+            // Atomically update shared best* vars (all are primitive writes, safe enough
+            // for this single-reader/single-writer scenario)
             bestTranscript = attemptTranscript;
             bestTranscriptLength = attemptTranscriptLength;
             bestTranscriptPreview = attemptTranscript.slice(0, 200);
@@ -372,29 +423,40 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
             bestPart = page.part;
             bestCid = page.cid;
           }
-        } else {
-          attemptError = "NO_SUBTITLE";
         }
-      } catch (caughtAttemptError) {
-        console.error(caughtAttemptError);
-        attemptError =
-          caughtAttemptError instanceof Error
-            ? caughtAttemptError.name === "AbortError"
-              ? "TIMEOUT"
-              : caughtAttemptError.message
-            : "UNKNOWN_ERROR";
-      }
 
-      pageAttempts.push({
-        page: page.page,
-        part: page.part,
-        cid: page.cid,
-        subtitle_count: attemptSubtitleList.length,
-        first_subtitle_url: attemptSubtitleUrl,
-        transcript_length: attemptTranscriptLength,
-        error: attemptError,
-      });
-    }
+        pageAttempts[index] = {
+          page: page.page,
+          part: page.part,
+          cid: page.cid,
+          subtitle_count: attemptSubtitleList.length,
+          first_subtitle_url: attemptSubtitleUrl,
+          transcript_length: attemptTranscriptLength,
+          error: null,
+        };
+      } catch (caughtError) {
+        console.error(caughtError);
+        pageAttempts[index] = {
+          page: page.page,
+          part: page.part,
+          cid: page.cid,
+          subtitle_count: 0,
+          first_subtitle_url: null,
+          transcript_length: 0,
+          error:
+            caughtError instanceof Error
+              ? caughtError.name === "AbortError"
+                ? "TIMEOUT"
+                : caughtError.message
+              : "UNKNOWN_ERROR",
+        };
+      } finally {
+        subtitleSemaphore.release();
+      }
+    };
+
+    // Launch all workers concurrently; semaphore caps actual parallelism at MAX_CONCURRENT_SUBTITLE_REQUESTS
+    await Promise.all(pages.map((page, index) => worker(page, index)));
 
     // Use the best transcript found across all pages
     if (bestTranscriptLength > 0) {
