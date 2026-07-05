@@ -4,13 +4,37 @@ import {
   resolveBvidDetails,
   summarizeSubtitleProbe,
 } from "@/lib/bilibili";
-import { getOpenAIClient } from "@/lib/openai";
+import { getOpenAIClient, getOpenAIModel } from "@/lib/openai";
 import { PROMPT_A, PROMPT_B } from "@/lib/prompts";
 
-export const runtime = "nodejs";
-export const maxDuration = 60;
+/** In-memory rate limiter: simple token bucket per IP (Vercel/Node). */
+const rateLimiter = (() => {
+  const windowMs = 60_000; // 1 minute window
+  const maxRequests = 10; // max requests per window per IP
+  const buckets = new Map<string, { count: number; resetAt: number }>();
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+  return {
+    check(ip: string): { allowed: boolean; retryAfterMs: number } {
+      const now = Date.now();
+      const bucket = buckets.get(ip);
+
+      if (!bucket || now > bucket.resetAt) {
+        buckets.set(ip, { count: 1, resetAt: now + windowMs });
+        return { allowed: true, retryAfterMs: 0 };
+      }
+
+      if (bucket.count >= maxRequests) {
+        return { allowed: false, retryAfterMs: bucket.resetAt - now };
+      }
+
+      bucket.count++;
+      return { allowed: true, retryAfterMs: 0 };
+    },
+  };
+})();
+
+export const runtime = "nodejs";
+export const maxDuration = 150; // must exceed the longest OpenAI call timeout (120s)
 
 type AnalysisResult = {
   total_words?: number;
@@ -55,6 +79,25 @@ function buildScriptPrompt(params: {
 }
 
 export async function POST(request: Request) {
+  // --- Rate limit ---
+  const clientIp =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+  const { allowed, retryAfterMs } = rateLimiter.check(clientIp);
+  if (!allowed) {
+    return Response.json(
+      {
+        error: "RATE_LIMITED",
+        message: `请求过于频繁，请 ${Math.ceil(retryAfterMs / 1000)} 秒后再试`,
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) },
+      },
+    );
+  }
+
   try {
     const body = (await request.json()) as {
       url?: string;
@@ -88,6 +131,17 @@ export async function POST(request: Request) {
       return Response.json(
         { error: "INVALID_TOPIC", message: "话题不能超过 500 个字符" },
         { status: 400 },
+      );
+    }
+
+    // Validate OpenAI configuration before doing expensive work
+    let openaiModel: string;
+    try {
+      openaiModel = getOpenAIModel();
+    } catch {
+      return Response.json(
+        { error: "MISSING_OPENAI_API_KEY", message: "缺少 OPENAI_API_KEY 环境变量" },
+        { status: 500 },
       );
     }
 
@@ -131,7 +185,7 @@ export async function POST(request: Request) {
     const analysisPrompt = buildAnalysisPrompt(transcript);
     const analysisResponse = await openai.chat.completions.create(
       {
-        model: OPENAI_MODEL,
+        model: openaiModel,
         messages: [
           {
             role: "user",
@@ -208,7 +262,7 @@ export async function POST(request: Request) {
 
     const stream = await openai.chat.completions.create(
       {
-        model: OPENAI_MODEL,
+        model: openaiModel,
         messages: [
           {
             role: "user",
