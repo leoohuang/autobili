@@ -108,10 +108,11 @@ function isRetryableError(error: unknown): boolean {
 
 /**
  * A lightweight semaphore for limiting concurrent async operations.
- * Acquire blocks until a slot is available; release frees it.
+ * Uses a promise-based FIFO queue — no busy-waiting, no CPU waste.
  */
 class Semaphore {
   private running = 0;
+  private waiters: Array<() => void> = [];
 
   constructor(private readonly limit: number) {}
 
@@ -120,23 +121,20 @@ class Semaphore {
       this.running++;
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
+    // Park this acquire call in the queue; resolve it when a slot frees up
     await new Promise<void>((resolve) => {
-      const check = () => {
-        if (self.running < self.limit) {
-          self.running++;
-          resolve();
-        } else {
-          setTimeout(check, 50);
-        }
-      };
-      check();
+      this.waiters.push(resolve);
     });
   }
 
   release(): void {
-    this.running--;
+    if (this.waiters.length > 0) {
+      // Wake the oldest waiter — they are responsible for incrementing running
+      const next = this.waiters.shift();
+      next!();
+    } else {
+      this.running--;
+    }
   }
 }
 
