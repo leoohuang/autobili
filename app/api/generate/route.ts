@@ -12,9 +12,24 @@ const rateLimiter = (() => {
   const windowMs = 60_000; // 1 minute window
   const maxRequests = 10; // max requests per window per IP
   const buckets = new Map<string, { count: number; resetAt: number }>();
+  const STALE_CLEANUP_INTERVAL_MS = 5 * 60_000; // 5 minutes
+
+  // Periodically remove expired buckets to prevent unbounded memory growth.
+  // No active timer needed here — triggered opportunistically on each check.
+  let lastCleanup = Date.now();
+
+  function pruneStaleBuckets() {
+    const now = Date.now();
+    if (now - lastCleanup < STALE_CLEANUP_INTERVAL_MS) return;
+    lastCleanup = now;
+    for (const [key, bucket] of buckets) {
+      if (now > bucket.resetAt) buckets.delete(key);
+    }
+  }
 
   return {
     check(ip: string): { allowed: boolean; retryAfterMs: number } {
+      pruneStaleBuckets();
       const now = Date.now();
       const bucket = buckets.get(ip);
 
