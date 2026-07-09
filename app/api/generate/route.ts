@@ -149,9 +149,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate OpenAI configuration before doing expensive work
+    // Validate OpenAI configuration (API key + model) BEFORE doing expensive
+    // Bilibili work, so a missing/again-invalid key fails fast instead of wasting
+    // subtitle fetches (resolve + multi-page probe) just to error out later.
+    let openai: OpenAI;
     let openaiModel: string;
     try {
+      openai = getOpenAIClient();
       openaiModel = getOpenAIModel();
     } catch {
       return Response.json(
@@ -196,7 +200,6 @@ export async function POST(request: Request) {
     }
 
     const transcript = probe.transcript;
-    const openai = getOpenAIClient();
     const analysisPrompt = buildAnalysisPrompt(transcript);
     const analysisResponse = await openai.chat.completions.create(
       {
