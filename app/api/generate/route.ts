@@ -75,8 +75,28 @@ type AnalysisResult = {
   ending?: string;
 };
 
+/**
+ * Fill `{placeholder}` slots in a prompt template with literal values.
+ *
+ * Uses a replacer function instead of a plain string replacement because
+ * `String.prototype.replaceAll(search, replacement)` treats `$` sequences in
+ * the replacement string as special patterns (`$$`, `$&`, `$'`, `` $` ``,
+ * `$<n>`). A transcript or user topic containing e.g. "$$" or "$&" would
+ * silently corrupt the prompt. Passing a function makes the value literal.
+ */
+function fillTemplate(
+  template: string,
+  values: Record<string, string>,
+): string {
+  let result = template;
+  for (const [key, value] of Object.entries(values)) {
+    result = result.replaceAll(`{${key}}`, () => value);
+  }
+  return result;
+}
+
 function buildAnalysisPrompt(transcript: string): string {
-  return PROMPT_A.replaceAll("{transcript}", transcript);
+  return fillTemplate(PROMPT_A, { transcript });
 }
 
 function buildScriptPrompt(params: {
@@ -86,11 +106,13 @@ function buildScriptPrompt(params: {
   targetMinutes: string;
   hookType: string;
 }): string {
-  return PROMPT_B.replaceAll("{analysis}", params.analysis)
-    .replaceAll("{user_topic}", params.userTopic)
-    .replaceAll("{target_words}", String(params.targetWords))
-    .replaceAll("{target_minutes}", params.targetMinutes)
-    .replaceAll("{hook_type}", params.hookType);
+  return fillTemplate(PROMPT_B, {
+    analysis: params.analysis,
+    user_topic: params.userTopic,
+    target_words: String(params.targetWords),
+    target_minutes: params.targetMinutes,
+    hook_type: params.hookType,
+  });
 }
 
 export async function POST(request: Request) {
