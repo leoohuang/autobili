@@ -47,6 +47,26 @@ export type SubtitleProbeResult = {
 
 const BVID_PATTERN = /BV[0-9A-Za-z]+/i;
 
+/**
+ * Hosts we are willing to fetch server-side when resolving a short/redirect
+ * link to a BV id. Restricting this prevents SSRF: without an allowlist a
+ * caller could make the server request arbitrary internal/external URLs
+ * (e.g. cloud metadata endpoints or private network services).
+ */
+const ALLOWED_RESOLVE_HOSTS = new Set(["b23.tv", "bilibili.com"]);
+
+function isAllowedResolveUrl(url: URL): boolean {
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return false;
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (ALLOWED_RESOLVE_HOSTS.has(hostname)) {
+    return true;
+  }
+  // Allow subdomains like www.bilibili.com / m.bilibili.com
+  return hostname.endsWith(".bilibili.com");
+}
+
 export type ResolveBvidResult = {
   bvid: string | null;
   source: "direct_match" | "redirect_url" | "fallback_url" | "invalid_input";
@@ -210,6 +230,17 @@ export async function resolveBvidDetails(
   try {
     parsedUrl = new URL(trimmedInput);
   } catch {
+    return {
+      bvid: null,
+      source: "invalid_input",
+      finalUrl: null,
+    };
+  }
+
+  // SSRF guard: only fetch URLs on known Bilibili hosts. Anything else
+  // (internal IPs, metadata endpoints, arbitrary third-party sites) is
+  // rejected without making a server-side request.
+  if (!isAllowedResolveUrl(parsedUrl)) {
     return {
       bvid: null,
       source: "invalid_input",
