@@ -81,7 +81,10 @@ export default function Page() {
           debug_summary?: string;
           message?: string;
         };
-        setError([data.message ?? "生成失败，请稍后重试", data.debug_summary].filter(Boolean).join("\n"));
+        // Show message to user; debug info belongs in the DebugPanel, not the error badge.
+        // This avoids the confusing duplication of showing debug_summary twice
+        // (once in the error line here and once via setDebugSummary below).
+        setError(data.message ?? "生成失败，请稍后重试");
         if (data.debug_summary) setDebugSummary(data.debug_summary);
         if (data.debug_payload) setDebugInfo(JSON.stringify(data.debug_payload, null, 2));
         setStatusText("生成失败");
