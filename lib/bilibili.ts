@@ -67,6 +67,57 @@ function isAllowedResolveUrl(url: URL): boolean {
   return hostname.endsWith(".bilibili.com");
 }
 
+/**
+ * Matches an absolute http(s) URL embedded anywhere inside a longer string.
+ * Stops at whitespace and at CJK punctuation that is never part of a URL but is
+ * routinely glued onto one in Bilibili share text (e.g. "链接：https://b23.tv/x，快看").
+ */
+const URL_IN_TEXT_PATTERN =
+  /https?:\/\/[^\s\u3000-\u303f\uff00-\uff65"'<>]+/i;
+
+/**
+ * Matches a scheme-less Bilibili host + path, e.g. "b23.tv/8kNq2Xv".
+ * Users very often paste the short link without "https://".
+ */
+const SCHEMELESS_URL_PATTERN =
+  /(?:^|[\s\u3000(（\[【])((?:b23\.tv|(?:[a-z0-9-]+\.)*bilibili\.com)\/[^\s\u3000-\u303f\uff00-\uff65"'<>]*)/i;
+
+/** Punctuation that commonly trails a pasted link but is not part of it. */
+const TRAILING_NOISE_PATTERN = /[.,;:!?)\]}>'"，。；：！？）】》」』]+$/;
+
+function stripTrailingNoise(candidate: string): string {
+  return candidate.replace(TRAILING_NOISE_PATTERN, "");
+}
+
+/**
+ * Pull a usable URL out of arbitrary user input.
+ *
+ * Bilibili's mobile app "copy link" produces share text rather than a bare URL,
+ * for example:
+ *   "【标题-哔哩哔哩】 https://b23.tv/8kNq2Xv"
+ * Passing that whole string to `new URL()` throws, which previously made every
+ * b23.tv share (the most common way people paste a link) fail with
+ * "无法识别 B 站视频链接" — the BV id is not present in the text either, so the
+ * direct-match path could not save it.
+ *
+ * Returns null when no URL-looking substring is present.
+ */
+function extractUrlCandidate(input: string): string | null {
+  const withScheme = input.match(URL_IN_TEXT_PATTERN)?.[0];
+  if (withScheme) {
+    const cleaned = stripTrailingNoise(withScheme);
+    return cleaned || null;
+  }
+
+  const schemeless = input.match(SCHEMELESS_URL_PATTERN)?.[1];
+  if (schemeless) {
+    const cleaned = stripTrailingNoise(schemeless);
+    return cleaned ? `https://${cleaned}` : null;
+  }
+
+  return null;
+}
+
 export type ResolveBvidResult = {
   bvid: string | null;
   source: "direct_match" | "redirect_url" | "fallback_url" | "invalid_input";
@@ -225,10 +276,21 @@ export async function resolveBvidDetails(
     };
   }
 
+  // Accept share text / scheme-less links, not just a bare URL string.
+  const urlCandidate = extractUrlCandidate(trimmedInput);
+
+  if (!urlCandidate) {
+    return {
+      bvid: null,
+      source: "invalid_input",
+      finalUrl: null,
+    };
+  }
+
   let parsedUrl: URL;
 
   try {
-    parsedUrl = new URL(trimmedInput);
+    parsedUrl = new URL(urlCandidate);
   } catch {
     return {
       bvid: null,
