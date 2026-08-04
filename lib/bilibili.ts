@@ -45,7 +45,29 @@ export type SubtitleProbeResult = {
   error: string | null;
 };
 
-const BVID_PATTERN = /BV[0-9A-Za-z]+/i;
+/**
+ * A Bilibili BV id is always "BV" followed by exactly 10 alphanumeric
+ * characters (e.g. `BV1GJ411x7h7`), and it never sits inside a longer
+ * alphanumeric token.
+ *
+ * The previous pattern (`/BV[0-9A-Za-z]+/i`) had neither a length limit nor
+ * boundaries, so on URLs that carry the video id in a **query parameter** it
+ * matched the parameter NAME instead of the value:
+ *
+ *   https://www.bilibili.com/list/watchlater?bvid=BV1GJ411x7h7&oid=123
+ *                                            ^^^^
+ *   "bv" (case-insensitive) + "id"  ->  extractBvid() returned "bvid"
+ *
+ * Every 稍后再看 / 收藏夹 / medialist link therefore failed 100% of the time:
+ * `probeSubtitles("bvid")` hit the Bilibili API with a garbage id and surfaced
+ * a confusing `BILIBILI_API_ERROR(-400)` instead of the real script.
+ *
+ * The leading `(?:^|[^0-9A-Za-z])` boundary is used instead of a lookbehind so
+ * the pattern stays parseable on every JS runtime. The `BV` prefix remains
+ * case-insensitive (people do type "bv1...") and is normalized to upper case,
+ * while the 10 id characters are preserved verbatim — they are case-sensitive.
+ */
+const BVID_PATTERN = /(?:^|[^0-9A-Za-z])(BV)([0-9A-Za-z]{10})(?![0-9A-Za-z])/i;
 
 /**
  * Hosts we are willing to fetch server-side when resolving a short/redirect
@@ -259,7 +281,14 @@ function normalizeSubtitleUrl(subtitleUrl: string): string {
 }
 
 export function extractBvid(input: string): string | null {
-  return input.match(BVID_PATTERN)?.[0] ?? null;
+  const match = input.match(BVID_PATTERN);
+
+  if (!match) {
+    return null;
+  }
+
+  // match[2] holds the 10 id characters; the prefix is normalized to "BV".
+  return `BV${match[2]}`;
 }
 
 export async function resolveBvidDetails(
