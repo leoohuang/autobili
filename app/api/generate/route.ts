@@ -171,6 +171,30 @@ export async function POST(request: Request) {
       );
     }
 
+    // Guard decode/encode failures that could crash the handler — return 400
+    // instead of propagating an unhandled exception to the error catch block.
+    let encodedUrl: string;
+    try {
+      encodedUrl = encodeURIComponent(url);
+    } catch {
+      return Response.json(
+        { error: "INVALID_URL", message: "视频链接包含无法处理的字符" },
+        { status: 400 },
+      );
+    }
+
+    // Defensive: tolerate invalid user input in topic even if JavaScript strips
+    // it on the client.  encodeURIComponent always succeeds for valid JS strings.
+    let encodedTopic: string;
+    try {
+      encodedTopic = encodeURIComponent(topic);
+    } catch {
+      return Response.json(
+        { error: "INVALID_TOPIC", message: "话题包含无法处理的字符" },
+        { status: 400 },
+      );
+    }
+
     // Validate OpenAI configuration (API key + model) BEFORE doing expensive
     // Bilibili work, so a missing/again-invalid key fails fast instead of wasting
     // subtitle fetches (resolve + multi-page probe) just to error out later.
