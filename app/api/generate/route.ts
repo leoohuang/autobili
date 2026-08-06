@@ -95,6 +95,115 @@ function fillTemplate(
   return result;
 }
 
+/**
+ * Upper bound on how much subtitle text is fed into the analysis prompt.
+ *
+ * `probeSubtitles()` returns the FULL transcript of the longest subtitle page,
+ * and until now that string was interpolated into PROMPT_A verbatim. For long
+ * videos (公开课 / 纪录片 / 长访谈) a single page can easily run to tens of
+ * thousands of characters, which overflows the model context window:
+ *
+ *   - gpt-4          ->   8k tokens  (~5k 中文字符 is already too much)
+ *   - gpt-3.5-turbo  ->  16k tokens
+ *   - gpt-4o         -> 128k tokens (a 3h transcript still gets close)
+ *
+ * All three are in the supported-model list in `lib/openai.ts`, so this is not
+ * a theoretical edge case. When it happened the user paid the full cost of the
+ * link resolve + multi-page subtitle probe, waited for it, and then got an
+ * opaque `AI 服务错误 (400): ...` with no hint about what to do.
+ *
+ * Capping the input keeps long videos working (structure analysis only needs a
+ * representative sample, not every word) and keeps token spend predictable.
+ * Chinese characters are roughly 1-1.5 tokens each, so the 24k default leaves
+ * headroom on a 16k-token model once prompt scaffolding and the JSON response
+ * are accounted for.
+ */
+const DEFAULT_MAX_TRANSCRIPT_CHARS = 24_000;
+const MIN_MAX_TRANSCRIPT_CHARS = 1_000;
+
+function getMaxTranscriptChars(): number {
+  const raw = process.env.MAX_TRANSCRIPT_CHARS;
+  if (!raw) return DEFAULT_MAX_TRANSCRIPT_CHARS;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < MIN_MAX_TRANSCRIPT_CHARS) {
+    console.warn(
+      `[generate] Ignoring invalid MAX_TRANSCRIPT_CHARS="${raw}" ` +
+        `(must be an integer >= ${MIN_MAX_TRANSCRIPT_CHARS}). ` +
+        `Falling back to ${DEFAULT_MAX_TRANSCRIPT_CHARS}.`,
+    );
+    return DEFAULT_MAX_TRANSCRIPT_CHARS;
+  }
+
+  return parsed;
+}
+
+/**
+ * Tell the model the text it is looking at is a prefix, not the whole video.
+ * Without this it reports the truncated length as the real `total_words` and
+ * describes the missing tail as "没有结尾".
+ */
+const TRUNCATION_NOTICE =
+  "\n\n[注意：以上字幕因长度限制已被截断，只是原视频前段内容，不是完整视频。" +
+  "请基于这段可见文本分析创作结构，total_words 按你实际看到的文本字数估算。]";
+
+/** Sentence terminators we prefer to cut on, so we never slice mid-sentence. */
+const SENTENCE_BOUNDARIES = ["。", "！", "？", "；", "…", ".", "!", "?", " "];
+
+/**
+ * Only accept a sentence boundary reasonably close to the limit — otherwise a
+ * transcript with no punctuation at all (common for auto-generated subtitles)
+ * would get cut back to almost nothing.
+ */
+const MIN_BOUNDARY_RATIO = 0.8;
+
+type TruncatedTranscript = {
+  text: string;
+  truncated: boolean;
+  originalLength: number;
+  usedLength: number;
+};
+
+function truncateTranscript(
+  transcript: string,
+  maxChars: number,
+): TruncatedTranscript {
+  if (transcript.length <= maxChars) {
+    return {
+      text: transcript,
+      truncated: false,
+      originalLength: transcript.length,
+      usedLength: transcript.length,
+    };
+  }
+
+  const head = transcript.slice(0, maxChars);
+  const boundary = Math.max(
+    ...SENTENCE_BOUNDARIES.map((marker) => head.lastIndexOf(marker)),
+  );
+  const body =
+    boundary >= maxChars * MIN_BOUNDARY_RATIO ? head.slice(0, boundary + 1) : head;
+
+  return {
+    text: `${body}${TRUNCATION_NOTICE}`,
+    truncated: true,
+    originalLength: transcript.length,
+    usedLength: body.length,
+  };
+}
+
+/**
+ * Backstop for the cap above: a deployment can raise MAX_TRANSCRIPT_CHARS or
+ * point OPENAI_MODEL at an even smaller-context model. Recognise the overflow
+ * so the user gets an actionable message instead of a raw 400.
+ */
+function isContextLengthError(error: InstanceType<typeof OpenAI.APIError>): boolean {
+  if (error.code === "context_length_exceeded") return true;
+  return /maximum context length|context_length_exceeded|too many tokens/i.test(
+    error.message ?? "",
+  );
+}
+
 function buildAnalysisPrompt(transcript: string): string {
   return fillTemplate(PROMPT_A, { transcript });
 }
@@ -245,8 +354,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const transcript = probe.transcript;
-    const analysisPrompt = buildAnalysisPrompt(transcript);
+    // Bound the transcript before it ever reaches the model. Long videos used
+    // to blow the context window here and surface as an opaque OpenAI 400.
+    const transcript = truncateTranscript(
+      probe.transcript,
+      getMaxTranscriptChars(),
+    );
+
+    if (transcript.truncated) {
+      console.warn(
+        `[generate] Transcript truncated for ${bvid}: ` +
+          `${transcript.originalLength} -> ${transcript.usedLength} chars`,
+      );
+    }
+
+    const analysisPrompt = buildAnalysisPrompt(transcript.text);
     const analysisResponse = await openai.chat.completions.create(
       {
         model: openaiModel,
@@ -368,6 +490,17 @@ export async function POST(request: Request) {
     // Handle OpenAI API errors with user-friendly messages
     if (error instanceof OpenAI.APIError) {
       const status = error.status;
+      if (isContextLengthError(error)) {
+        return Response.json(
+          {
+            error: "CONTEXT_LENGTH_EXCEEDED",
+            message:
+              "视频字幕太长，超出了当前模型的上下文长度。请换用上下文更大的模型（如 gpt-4o），" +
+              "或调小 MAX_TRANSCRIPT_CHARS 后重试。",
+          },
+          { status: 400 },
+        );
+      }
       if (status === 429) {
         return Response.json(
           { error: "RATE_LIMIT", message: "AI 服务请求过于频繁，请稍后再试" },
