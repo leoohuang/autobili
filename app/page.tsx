@@ -179,12 +179,20 @@ export default function Page() {
             value={url}
             onChange={(event) => setUrl(event.target.value)}
           />
-          <input
-            className="rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-slate-400"
-            placeholder="输入你想做的新话题"
-            value={topic}
-            onChange={(event) => setTopic(event.target.value)}
-          />
+          <div className="relative">
+            <input
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-16 outline-none transition focus:border-slate-400"
+              placeholder="输入你想做的新话题"
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+            />
+            <span
+              className={`absolute bottom-2.5 right-3 text-xs ${topic.length > 450 ? (topic.length > 500 ? "text-red-500" : "text-amber-500") : "text-slate-400"}`}
+              aria-live="polite"
+            >
+              {topic.length}/500
+            </span>
+          </div>
           <div className="flex gap-3">
             <button
               className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
