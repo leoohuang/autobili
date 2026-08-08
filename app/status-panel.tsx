@@ -58,7 +58,7 @@ export function StatusPanel({
   result,
   statusText,
 }: StatusPanelProps) {
-  const badge = loading ? "Generating" : error ? "Error" : result ? "Ready" : "Idle";
+  const badge = loading ? "生成中" : error ? "错误" : result ? "就绪" : "等待";
   const wordCount = countWords(result);
 
   return (
