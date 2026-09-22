@@ -280,6 +280,45 @@ function normalizeSubtitleUrl(subtitleUrl: string): string {
   return subtitleUrl;
 }
 
+/**
+ * True when a subtitle track looks like Chinese.
+ *
+ * Bilibili reports the track language in `lan` (`zh-CN`, `zh-Hans`, `en-US`,
+ * and `ai-zh` for machine-generated Chinese) and a human label in `lan_doc`
+ * (e.g. "中文（中国）"). Matching on both keeps us working if one of the two
+ * fields is missing or uses an unexpected spelling.
+ */
+function isChineseSubtitle(item: BilibiliSubtitleItem): boolean {
+  const lan = item.lan?.toLowerCase() ?? "";
+  return lan.includes("zh") || (item.lan_doc?.includes("中文") ?? false);
+}
+
+/**
+ * Pick the subtitle track to analyse out of a page's `subtitles` array.
+ *
+ * The player API returns *every* track an author attached, and the array is not
+ * ordered by our preference. Reading `subtitles[0]` blindly had two failure
+ * modes:
+ *
+ *   1. The first entry can be a non-Chinese track (e.g. `en-US`) on videos that
+ *      ship multi-language CC. Both the deconstruction prompt and the generated
+ *      script are Chinese, so analysing an English transcript produces a wrong
+ *      structure and a wrong `total_words` budget for the new script.
+ *   2. The first entry can be a placeholder without a usable `subtitle_url`
+ *      (a locked track, or an AI subtitle that is still generating). The old
+ *      `subtitles[0]?.subtitle_url` then read as `null`, so the whole page was
+ *      reported as "no subtitle" even though a later entry did have a URL.
+ *
+ * Prefer a Chinese track that actually has a `subtitle_url`; otherwise fall back
+ * to the first track with a URL. Returns `null` when no track is fetchable.
+ */
+function pickPreferredSubtitle(
+  subtitles: BilibiliSubtitleItem[],
+): BilibiliSubtitleItem | null {
+  const fetchable = subtitles.filter((item) => Boolean(item.subtitle_url));
+  return fetchable.find(isChineseSubtitle) ?? fetchable[0] ?? null;
+}
+
 export function extractBvid(input: string): string | null {
   const match = input.match(BVID_PATTERN);
 
@@ -524,7 +563,8 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
       await subtitleSemaphore.acquire();
       try {
         const attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
-        const attemptSubtitleUrl = attemptSubtitleList[0]?.subtitle_url ?? null;
+        const chosenSubtitle = pickPreferredSubtitle(attemptSubtitleList);
+        const attemptSubtitleUrl = chosenSubtitle?.subtitle_url ?? null;
         let attemptTranscriptLength = 0;
 
         if (attemptSubtitleUrl) {
