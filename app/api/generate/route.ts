@@ -245,10 +245,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as {
-      url?: string;
-      topic?: string;
-    };
+    // Parse the request body up front and return 400 (not 500) when it is not
+    // valid JSON. Without this guard a malformed body makes `request.json()`
+    // throw and fall through to the outer catch, which would surface a generic
+    // 500 INTERNAL_ERROR for what is really a client-side malformed request —
+    // inconsistent with every other validation in this handler (all 400-level).
+    let body: { url?: string; topic?: string };
+    try {
+      body = (await request.json()) as { url?: string; topic?: string };
+    } catch {
+      return Response.json(
+        { error: "BAD_REQUEST", message: "请求体不是合法的 JSON，请检查输入后重试" },
+        { status: 400 },
+      );
+    }
     const url = body.url?.trim();
     const topic = body.topic?.trim();
 
