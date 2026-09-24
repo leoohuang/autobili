@@ -530,15 +530,19 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
       }))
       .filter((item) => item.cid > 0);
 
-    // Probe ALL pages and select the one with the longest transcript
-    let bestTranscript = "";
-    let bestTranscriptLength = 0;
-    let bestTranscriptPreview = "";
-    let bestSubtitleUrl: string | null = null;
-    let bestSubtitleList: BilibiliSubtitleItem[] = [];
-    let bestPage: number | null = null;
-    let bestPart: string | null = null;
-    let bestCid: number | null = null;
+    // Each worker returns its OWN result; the best page is chosen in a single
+    // thread AFTER all workers resolve (below) so there is no shared mutable
+    // state to race on. Mutating shared "best" variables from the concurrently
+    // running workers would be a non-atomic check-then-act that can lose updates
+    // (see the worker comment for the exact interleaving).
+    type PageProbe = {
+      page: VideoPage;
+      subtitleList: BilibiliSubtitleItem[];
+      subtitleUrl: string | null;
+      transcript: string;
+      transcriptLength: number;
+      transcriptPreview: string;
+    } | null;
 
     // Submit all pages through a semaphore to cap concurrency.
     // This avoids Bilibili IP rate-limits on multi-page videos while
@@ -558,31 +562,30 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
       });
     }
 
-    // Worker: fetches one page's subtitles, updates shared best* vars, returns record
-    const worker = async (page: VideoPage, index: number) => {
+    // Worker: fetches one page's subtitles and returns its LOCAL result. It must
+    // NOT mutate shared "best" state. The old code did exactly that:
+    //
+    //   if (attemptTranscriptLength > bestTranscriptLength) { bestTranscript = ... }
+    //
+    // With up to MAX_CONCURRENT_SUBTITLE_REQUESTS workers running concurrently,
+    // this check-then-act is not atomic. Interleaving example with pages of
+    // lengths 4800 and 5000: both workers read bestTranscriptLength === 0, both
+    // enter the block, and whichever writes LAST wins — so the 4800-char page can
+    // overwrite the 5000-char page, and the shorter transcript is selected.
+    // Returning a self-contained result and selecting after Promise.all removes
+    // the race entirely. page_attempts is written by index, so it is safe here.
+    const worker = async (page: VideoPage, index: number): Promise<PageProbe> => {
       await subtitleSemaphore.acquire();
       try {
         const attemptSubtitleList = await fetchSubtitleList(bvid, page.cid);
         const chosenSubtitle = pickPreferredSubtitle(attemptSubtitleList);
         const attemptSubtitleUrl = chosenSubtitle?.subtitle_url ?? null;
+        let attemptTranscript = "";
         let attemptTranscriptLength = 0;
 
         if (attemptSubtitleUrl) {
-          const attemptTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
+          attemptTranscript = await fetchSubtitleContent(attemptSubtitleUrl);
           attemptTranscriptLength = attemptTranscript.length;
-
-          if (attemptTranscriptLength > bestTranscriptLength) {
-            // Atomically update shared best* vars (all are primitive writes, safe enough
-            // for this single-reader/single-writer scenario)
-            bestTranscript = attemptTranscript;
-            bestTranscriptLength = attemptTranscriptLength;
-            bestTranscriptPreview = attemptTranscript.slice(0, 200);
-            bestSubtitleUrl = attemptSubtitleUrl;
-            bestSubtitleList = attemptSubtitleList;
-            bestPage = page.page;
-            bestPart = page.part;
-            bestCid = page.cid;
-          }
         }
 
         pageAttempts[index] = {
@@ -594,6 +597,17 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
           transcript_length: attemptTranscriptLength,
           error: null,
         };
+
+        return attemptTranscriptLength > 0
+          ? {
+              page,
+              subtitleList: attemptSubtitleList,
+              subtitleUrl: attemptSubtitleUrl,
+              transcript: attemptTranscript,
+              transcriptLength: attemptTranscriptLength,
+              transcriptPreview: attemptTranscript.slice(0, 200),
+            }
+          : null;
       } catch (caughtError) {
         console.error(caughtError);
         pageAttempts[index] = {
@@ -610,24 +624,37 @@ export async function probeSubtitles(bvid: string): Promise<SubtitleProbeResult>
                 : caughtError.message
               : "UNKNOWN_ERROR",
         };
+        return null;
       } finally {
         subtitleSemaphore.release();
       }
     };
 
-    // Launch all workers concurrently; semaphore caps actual parallelism at MAX_CONCURRENT_SUBTITLE_REQUESTS
-    await Promise.all(pages.map((page, index) => worker(page, index)));
+    // Run every page probe concurrently; the semaphore caps real parallelism at
+    // MAX_CONCURRENT_SUBTITLE_REQUESTS. Workers return self-contained results, so
+    // the selection below is single-threaded and free of shared-state races.
+    const pageProbes = await Promise.all(
+      pages.map((page, index) => worker(page, index)),
+    );
 
-    // Use the best transcript found across all pages
-    if (bestTranscriptLength > 0) {
-      cid = bestCid;
-      selectedPage = bestPage;
-      selectedPart = bestPart;
-      subtitleList = bestSubtitleList;
-      firstSubtitleUrl = bestSubtitleUrl;
-      transcriptPreview = bestTranscriptPreview;
-      transcriptLength = bestTranscriptLength;
-      transcript = bestTranscript;
+    // Pick the page with the longest transcript. Done once, sequentially, after
+    // all workers have resolved — no concurrent read-modify-write on shared vars.
+    let best: PageProbe = null;
+    for (const probe of pageProbes) {
+      if (probe && (!best || probe.transcriptLength > best.transcriptLength)) {
+        best = probe;
+      }
+    }
+
+    if (best) {
+      cid = best.page.cid;
+      selectedPage = best.page.page;
+      selectedPart = best.page.part;
+      subtitleList = best.subtitleList;
+      firstSubtitleUrl = best.subtitleUrl;
+      transcriptPreview = best.transcriptPreview;
+      transcriptLength = best.transcriptLength;
+      transcript = best.transcript;
     } else {
       cid = viewData.data?.cid ?? null;
       error = "NO_SUBTITLE";
