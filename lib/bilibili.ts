@@ -222,7 +222,12 @@ class Semaphore {
 
   release(): void {
     if (this.waiters.length > 0) {
-      // Wake the oldest waiter — they are responsible for incrementing running
+      // Wake the oldest waiter and transfer the running slot to them — they
+      // will call acquire() again and find a free slot, so running stays the
+      // same (we are not forking a new task, just handing the slot over).
+      // NOT incrementing running here is the key difference from a mutex: a
+      // semaphore tracks how many tasks are running, and handing a slot to a
+      // waiter means the count stays correct without double-counting.
       const next = this.waiters.shift();
       next!();
     } else {
