@@ -497,6 +497,21 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error(error);
 
+    // Handle OpenAI connection errors FIRST. `APIConnectionError` (and its
+    // subclass `APIConnectionTimeoutError`) extend `OpenAI.APIError`, so the
+    // `instanceof OpenAI.APIError` check below would swallow them and never
+    // reach this branch. They carry `status === undefined`, so without this
+    // early return they fell through to the generic 500 with a misleading
+    // "AI 服务错误 (undefined): ..." message instead of the actionable
+    // "无法连接到 AI 服务" 503. Network/timeout failures are common (flaky
+    // egress, OpenAI outages), so this branch must be reachable.
+    if (error instanceof OpenAI.APIConnectionError) {
+      return Response.json(
+        { error: "API_CONNECTION_ERROR", message: "无法连接到 AI 服务，请检查网络后重试" },
+        { status: 503 },
+      );
+    }
+
     // Handle OpenAI API errors with user-friendly messages
     if (error instanceof OpenAI.APIError) {
       const status = error.status;
@@ -541,13 +556,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Handle OpenAI connection errors
-    if (error instanceof OpenAI.APIConnectionError) {
-      return Response.json(
-        { error: "API_CONNECTION_ERROR", message: "无法连接到 AI 服务，请检查网络后重试" },
-        { status: 503 },
-      );
-    }
 
     if (error instanceof Error && error.message === "MISSING_OPENAI_API_KEY") {
       return Response.json(
