@@ -142,7 +142,12 @@ function extractUrlCandidate(input: string): string | null {
 
 export type ResolveBvidResult = {
   bvid: string | null;
-  source: "direct_match" | "redirect_url" | "fallback_url" | "invalid_input";
+  source:
+    | "direct_match"
+    | "redirect_url"
+    | "fallback_url"
+    | "invalid_input"
+    | "blocked_redirect";
   finalUrl: string | null;
 };
 
@@ -179,6 +184,7 @@ type SubtitleBodyResponse = {
 const FETCH_TIMEOUT_MS = 10_000; // 10 seconds per request
 const MAX_RETRIES = 2;
 const MAX_CONCURRENT_SUBTITLE_REQUESTS = 5; // cap concurrent subtitle API calls
+const MAX_REDIRECT_HOPS = 5; // cap how deep a short-link redirect chain may go
 
 const RETRYABLE_HTTP_STATUS = new Set([412, 429, 502, 503, 504]);
 
@@ -335,6 +341,68 @@ export function extractBvid(input: string): string | null {
   return `BV${match[2]}`;
 }
 
+/**
+ * Walk an HTTP redirect chain one hop at a time, re-validating the host of
+ * *every* hop against the SSRF allowlist (see ALLOWED_RESOLVE_HOSTS).
+ *
+ * This is the secure replacement for `fetch(url, { redirect: "follow" })`.
+ * With automatic following, the server would happily issue a request to
+ * whatever host the first response points at — including an internal IP
+ * (10.x, 192.168.x), a link-local address, or a cloud metadata endpoint such
+ * as http://169.254.169.254/. A short link on an *allowed* host (b23.tv is
+ * Bilibili-controlled but could be compromised, or simply 302 to a partner
+ * domain) would therefore let an attacker make the server probe arbitrary
+ * internal/external URLs. Following manually and checking each Location keeps
+ * the allowlist meaningful.
+ *
+ * Only GET is used and the response body is never read, so even the request
+ * itself is confined to allowlisted hosts. Returns `{ blocked: true }` the
+ * moment a hop leaves the allowlist (or the chain is too deep), so the caller
+ * refuses to resolve rather than leak a server-side request.
+ */
+async function followRedirects(
+  startUrl: string,
+  signal: AbortSignal,
+): Promise<{ finalUrl: string | null; blocked: boolean }> {
+  let currentUrl = startUrl;
+
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    const response = await fetch(currentUrl, {
+      method: "GET",
+      headers: BILIBILI_HEADERS,
+      redirect: "manual",
+      cache: "no-store",
+      signal,
+    });
+
+    const location = response.headers.get("location");
+    const isRedirect =
+      response.status >= 300 && response.status < 400 && Boolean(location);
+
+    if (!isRedirect) {
+      // Not a redirect: this is the final, allowlist-checked URL.
+      return { finalUrl: currentUrl, blocked: false };
+    }
+
+    // Resolve the next hop relative to the current one (handles relative
+    // Location headers like "//www.bilibili.com/x"), then reject it unless it
+    // stays on an allowed host.
+    let nextUrl: URL;
+    try {
+      nextUrl = new URL(location!, currentUrl);
+    } catch {
+      return { finalUrl: null, blocked: true };
+    }
+    if (!isAllowedResolveUrl(nextUrl)) {
+      return { finalUrl: null, blocked: true };
+    }
+    currentUrl = nextUrl.toString();
+  }
+
+  // Too many hops — refuse to resolve rather than loop forever.
+  return { finalUrl: null, blocked: true };
+}
+
 export async function resolveBvidDetails(
   input: string,
 ): Promise<ResolveBvidResult> {
@@ -383,22 +451,28 @@ export async function resolveBvidDetails(
     };
   }
 
-  let lastError: Error | null = null;
+  let currentUrl = parsedUrl.toString();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(parsedUrl.toString(), {
-        headers: BILIBILI_HEADERS,
-        redirect: "follow",
-        cache: "no-store",
-        signal: controller.signal,
-      });
+      // Follow the redirect chain MANUALLY so every hop is re-checked against
+      // the SSRF allowlist. `redirect: "follow"` would make the server request
+      // whatever host the first response points at — including internal IPs or
+      // a cloud metadata endpoint — which completely defeats
+      // ALLOWED_RESOLVE_HOSTS.
+      const chain = await followRedirects(currentUrl, controller.signal);
       clearTimeout(timeoutId);
 
-      const finalUrl = response.url || parsedUrl.toString();
+      if (chain.blocked) {
+        // A redirect tried to escape the allowlist: refuse to resolve rather
+        // than leak a server-side request to an untrusted host.
+        return { bvid: null, source: "blocked_redirect", finalUrl: null };
+      }
+
+      const finalUrl = chain.finalUrl ?? currentUrl;
       return {
         bvid: extractBvid(finalUrl),
         source: "redirect_url",
@@ -406,7 +480,6 @@ export async function resolveBvidDetails(
       };
     } catch (error) {
       clearTimeout(timeoutId);
-      lastError = error instanceof Error ? error : new Error(String(error));
 
       if (isRetryableError(error) && attempt < MAX_RETRIES) {
         // Exponential backoff: 500ms, 1000ms
@@ -418,17 +491,17 @@ export async function resolveBvidDetails(
       // Either non-retryable error or final retry attempt exhausted
       console.error(error);
       return {
-        bvid: extractBvid(parsedUrl.toString()),
+        bvid: extractBvid(currentUrl),
         source: "fallback_url",
-        finalUrl: parsedUrl.toString(),
+        finalUrl: currentUrl,
       };
     }
   }
   // TypeScript control flow analysis requires this unreachable return
   return {
-    bvid: extractBvid(parsedUrl.toString()),
+    bvid: extractBvid(currentUrl),
     source: "fallback_url" as const,
-    finalUrl: parsedUrl.toString(),
+    finalUrl: currentUrl,
   };
 }
 
