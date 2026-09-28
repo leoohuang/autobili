@@ -49,7 +49,19 @@ const rateLimiter = (() => {
 })();
 
 export const runtime = "nodejs";
-export const maxDuration = 150; // must exceed the longest OpenAI call timeout (120s)
+// Wall-clock ceiling for the whole generation (Vercel clamps this to the plan's
+// maximum: 60s on Hobby, 300s on Pro/Enterprise — 300 is the highest value the
+// platform accepts).
+//
+// It must comfortably cover BOTH OpenAI calls, which run SEQUENTIALLY:
+//   - analysis call   : 60s  timeout (see below)
+//   - streaming call  : 240s timeout (see below)
+// So the realistic worst case is ~60 + 240 = 300s. The old value (150) was below
+// even the analysis+stream sum (180s), so any generation that pushed the timeouts
+// was killed mid-stream by the platform and the user got a silently truncated
+// script. 300 is the platform max and leaves no headroom, but in practice both
+// calls finish well under their timeouts, so the common case has margin.
+export const maxDuration = 300;
 
 type AnalysisResult = {
   total_words?: number;
@@ -467,7 +479,7 @@ export async function POST(request: Request) {
         ],
         stream: true,
       },
-      { timeout: 120_000 },
+      { timeout: 240_000 }, // must be <= maxDuration (300s) - analysis timeout (60s)
     );
 
     const encoder = new TextEncoder();
