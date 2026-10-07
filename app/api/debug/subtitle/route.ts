@@ -4,6 +4,17 @@ import {
 } from "@/lib/bilibili";
 
 export const runtime = "nodejs";
+// Wall-clock ceiling for the debug probe. This route runs the SAME expensive,
+// multi-page Bilibili work as /api/generate (resolveBvidDetails + probeSubtitles
+// -> fetchViewData + up to N parallel subtitle fetches), and every fetchJson call
+// already carries its own 10s timeout plus retries. On a multi-page video with
+// retries the probe can easily run past Vercel's default 10s function ceiling,
+// so without this cap the platform kills the function mid-probe and the user gets
+// a bare 500/504 instead of the subtitle debug payload. The generate route sets
+// 300 (see there for the platform-clamp rationale); this route makes NO OpenAI
+// call, so its realistic worst case is only the Bilibili fetch fan-out, and 120s
+// leaves comfortable headroom without over-committing to the plan maximum.
+export const maxDuration = 120;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
